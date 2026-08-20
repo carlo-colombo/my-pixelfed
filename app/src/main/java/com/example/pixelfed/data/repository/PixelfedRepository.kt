@@ -4,9 +4,12 @@ import android.content.Context
 import android.net.Uri
 import com.example.pixelfed.data.api.PixelfedApi
 import com.example.pixelfed.data.api.StatusResponse
+import com.example.pixelfed.data.api.StatusItem
 import com.example.pixelfed.data.auth.TokenManager
 import com.example.pixelfed.utils.ImageUtils
+import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -137,6 +140,95 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun getUserTopTags(forceRefresh: Boolean = false): Result<List<String>> = withContext(Dispatchers.IO) {
+        val cacheDurationMs = 12 * 60 * 60 * 1000L
+        val currentTime = System.currentTimeMillis()
+
+        if (!forceRefresh) {
+            val cachedTime = tokenManager.tagsCacheTime
+            val cachedJson = tokenManager.cachedTagsJson
+            if (cachedJson != null && (currentTime - cachedTime) < cacheDurationMs) {
+                try {
+                    val listType = object : TypeToken<List<String>>() {}.type
+                    val cachedList: List<String> = Gson().fromJson(cachedJson, listType)
+                    return@withContext Result.success(cachedList)
+                } catch (e: Exception) {
+                    // fall back to fetching if JSON parsing fails
+                }
+            }
+        }
+
+        try {
+            val instanceUrl = tokenManager.instanceUrl ?: return@withContext Result.failure(Exception("Not logged in"))
+            val accessToken = tokenManager.accessToken ?: return@withContext Result.failure(Exception("Not logged in"))
+
+            val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
+            val authHeader = "Bearer $accessToken"
+
+            val accountResponse = api.verifyCredentials(authHeader)
+            if (!accountResponse.isSuccessful || accountResponse.body() == null) {
+                return@withContext Result.failure(Exception("Failed to verify user credentials"))
+            }
+
+            val userId = accountResponse.body()!!.getIdString()
+                ?: return@withContext Result.failure(Exception("User ID not found"))
+
+            val statusesResponse = api.getUserStatuses(authHeader, userId, limit = 100)
+            if (!statusesResponse.isSuccessful || statusesResponse.body() == null) {
+                return@withContext Result.failure(Exception("Failed to fetch user statuses"))
+            }
+
+            val statuses = statusesResponse.body()!!
+            val topTags = extractTopTagsFromStatuses(statuses, topCount = 20)
+
+            tokenManager.cachedTagsJson = Gson().toJson(topTags)
+            tokenManager.tagsCacheTime = currentTime
+
+            Result.success(topTags)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    companion object {
+        fun extractTopTagsFromStatuses(statuses: List<StatusItem>, topCount: Int = 20): List<String> {
+            val tagCounts = mutableMapOf<String, Int>()
+
+            for (status in statuses) {
+                val seenInStatus = mutableSetOf<String>()
+
+                // 1. Tags array provided by API
+                status.tags?.forEach { tag ->
+                    val tagName = tag.name?.trim()?.removePrefix("#")
+                    if (!tagName.isNullOrEmpty()) {
+                        seenInStatus.add(tagName.lowercase())
+                    }
+                }
+
+                // 2. Fallback / supplementary hashtag parsing from content HTML or text
+                val content = status.content
+                if (!content.isNullOrEmpty()) {
+                    val hashtagRegex = Regex("""#(\w+)""")
+                    hashtagRegex.findAll(content).forEach { matchResult ->
+                        val tag = matchResult.groupValues[1].lowercase()
+                        if (tag.isNotEmpty()) {
+                            seenInStatus.add(tag)
+                        }
+                    }
+                }
+
+                for (tag in seenInStatus) {
+                    tagCounts[tag] = (tagCounts[tag] ?: 0) + 1
+                }
+            }
+
+            return tagCounts.entries
+                .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+                .take(topCount)
+                .map { it.key }
         }
     }
 

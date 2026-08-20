@@ -7,12 +7,27 @@ import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
+import retrofit2.http.Path
+import retrofit2.http.Query
 
 interface PixelfedApi {
+
+    @GET("api/v1/accounts/verify_credentials")
+    suspend fun verifyCredentials(
+        @Header("Authorization") authHeader: String
+    ): Response<AccountResponse>
+
+    @GET("api/v1/accounts/{id}/statuses")
+    suspend fun getUserStatuses(
+        @Header("Authorization") authHeader: String,
+        @Path("id") accountId: String,
+        @Query("limit") limit: Int = 100
+    ): Response<List<StatusItem>>
 
     @FormUrlEncoded
     @POST("api/v1/apps")
@@ -94,6 +109,26 @@ data class MediaResponse(
         else -> id.toString()
     }
 }
+
+data class AccountResponse(
+    @SerializedName("id") val id: JsonElement? = null
+) {
+    fun getIdString(): String? = when {
+        id == null || id.isJsonNull -> null
+        id.isJsonPrimitive -> id.asString
+        else -> id.toString()
+    }
+}
+
+data class TagItem(
+    @SerializedName("name") val name: String? = null
+)
+
+data class StatusItem(
+    @SerializedName("id") val id: JsonElement? = null,
+    @SerializedName("tags") val tags: List<TagItem>? = null,
+    @SerializedName("content") val content: String? = null
+)
 
 data class StatusResponse(
     @SerializedName("id") val id: JsonElement? = null,
