@@ -1,0 +1,87 @@
+name: Build
+
+env:
+  main_project_module: app
+
+on:
+  push:
+    branches:
+      - 'main'
+  pull_request:
+    branches:
+      - 'main'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Bump version and push tag (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: bump_and_tag
+        uses: anothrNick/github-tag-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WITH_V: false
+          PRERELEASE: true
+          PRERELEASE_SUFFIX: build
+          INITIAL_VERSION: 1.0.0
+
+      - name: Set Up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set Up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Assemble APK
+        run: |
+          TAG_VERSION="${{ steps.bump_and_tag.outputs.new_tag }}"
+          if [ -z "$TAG_VERSION" ]; then
+            TAG_VERSION="1.0.0-pr"
+          fi
+          ./gradlew \
+            -Pandroid.versionName="$TAG_VERSION" \
+            assembleProdRelease
+
+      - name: Sign Android release
+        id: sign_app
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: app/build/outputs/apk/prod/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
+
+      - name: Prepare Signed APK artifact
+        run: |
+          TAG_VERSION="${{ steps.bump_and_tag.outputs.new_tag }}"
+          if [ -z "$TAG_VERSION" ]; then
+            TAG_VERSION="1.0.0-pr-${{ github.run_number }}"
+          fi
+          cp app/build/outputs/apk/prod/release/app-prod-release-unsigned-signed.apk pixelfed-client-${TAG_VERSION}.apk
+
+      - name: Upload APK Artifact (PR & Main)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelfed-client-apk
+          path: pixelfed-client-*.apk
+
+      - name: Release (Main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump_and_tag.outputs.new_tag }}
+          files: pixelfed-client-${{ steps.bump_and_tag.outputs.new_tag }}.apk
