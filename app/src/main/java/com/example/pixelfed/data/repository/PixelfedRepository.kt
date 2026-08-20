@@ -5,6 +5,7 @@ import android.net.Uri
 import com.example.pixelfed.data.api.PixelfedApi
 import com.example.pixelfed.data.api.StatusResponse
 import com.example.pixelfed.data.auth.TokenManager
+import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -21,9 +22,12 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
 
     private fun getRetrofit(baseUrl: String): Retrofit {
         val sanitizedUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        val gson = GsonBuilder()
+            .setLenient()
+            .create()
         return Retrofit.Builder()
             .baseUrl(sanitizedUrl)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .client(OkHttpClient.Builder().build())
             .build()
     }
@@ -39,8 +43,8 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             )
             if (response.isSuccessful && response.body() != null) {
                 val body = response.body()!!
-                val clientId = body.clientId
-                val clientSecret = body.clientSecret
+                val clientId = body.getClientIdString()
+                val clientSecret = body.getClientSecretString()
                 if (!clientId.isNullOrBlank() && !clientSecret.isNullOrBlank()) {
                     tokenManager.clientId = clientId
                     tokenManager.clientSecret = clientSecret
@@ -70,7 +74,7 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             )
 
             if (response.isSuccessful && response.body() != null) {
-                val accessToken = response.body()!!.accessToken
+                val accessToken = response.body()!!.getAccessTokenString()
                 if (!accessToken.isNullOrBlank()) {
                     tokenManager.accessToken = accessToken
                     return@withContext Result.success(accessToken)
@@ -109,7 +113,7 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 return@withContext Result.failure(Exception("Media upload failed: ${mediaResponse.code()} ${mediaResponse.errorBody()?.string()}"))
             }
 
-            val mediaId = mediaResponse.body()!!.id ?: return@withContext Result.failure(Exception("Media upload response missing ID"))
+            val mediaId = mediaResponse.body()!!.getIdString() ?: return@withContext Result.failure(Exception("Media upload response missing ID"))
 
             val statusResponse = api.createStatus(
                 authHeader = "Bearer $accessToken",

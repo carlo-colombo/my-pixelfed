@@ -1,5 +1,6 @@
 package com.example.pixelfed.data.api
 
+import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -51,26 +52,56 @@ interface PixelfedApi {
 }
 
 data class RegisterAppResponse(
-    @SerializedName("id") val id: String? = null,
-    @SerializedName("client_id") val clientId: String? = null,
-    @SerializedName("client_secret") val clientSecret: String? = null
-)
+    @SerializedName("id") val id: JsonElement? = null,
+    @SerializedName("client_id") val clientId: JsonElement? = null,
+    @SerializedName("client_secret") val clientSecret: JsonElement? = null
+) {
+    fun getClientIdString(): String? = when {
+        clientId == null || clientId.isJsonNull -> null
+        clientId.isJsonPrimitive -> clientId.asString
+        else -> clientId.toString()
+    }
+
+    fun getClientSecretString(): String? = when {
+        clientSecret == null || clientSecret.isJsonNull -> null
+        clientSecret.isJsonPrimitive -> clientSecret.asString
+        else -> clientSecret.toString()
+    }
+}
 
 data class TokenResponse(
-    @SerializedName("access_token") val accessToken: String? = null,
-    @SerializedName("token_type") val tokenType: String? = null,
-    @SerializedName("scope") val scope: String? = null,
-    @SerializedName("created_at") val createdAt: Long? = null
-)
+    @SerializedName("access_token") val accessToken: JsonElement? = null,
+    @SerializedName("token_type") val tokenType: JsonElement? = null,
+    @SerializedName("scope") val scope: JsonElement? = null,
+    @SerializedName("created_at") val createdAt: JsonElement? = null
+) {
+    fun getAccessTokenString(): String? = when {
+        accessToken == null || accessToken.isJsonNull -> null
+        accessToken.isJsonPrimitive -> accessToken.asString
+        else -> accessToken.toString()
+    }
+}
 
 data class MediaResponse(
-    @SerializedName("id") val id: String? = null,
-    @SerializedName("type") val type: String? = null,
-    @SerializedName("url") val url: String? = null,
-    @SerializedName("preview_url") val previewUrl: String? = null
-)
+    @SerializedName("id") val id: JsonElement? = null,
+    @SerializedName("type") val type: JsonElement? = null,
+    @SerializedName("url") val url: JsonElement? = null,
+    @SerializedName("preview_url") val previewUrl: JsonElement? = null
+) {
+    fun getIdString(): String? = when {
+        id == null || id.isJsonNull -> null
+        id.isJsonPrimitive -> id.asString
+        else -> id.toString()
+    }
+}
 
 data class StatusResponse(
-    @SerializedName("id") val id: String? = null,
-    @SerializedName("url") val url: String? = null
-)
+    @SerializedName("id") val id: JsonElement? = null,
+    @SerializedName("url") val url: JsonElement? = null
+) {
+    fun getIdString(): String? = when {
+        id == null || id.isJsonNull -> null
+        id.isJsonPrimitive -> id.asString
+        else -> id.toString()
+    }
+}
