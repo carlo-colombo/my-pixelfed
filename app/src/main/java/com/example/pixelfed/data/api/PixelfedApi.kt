@@ -1,0 +1,107 @@
+package com.example.pixelfed.data.api
+
+import com.google.gson.JsonElement
+import com.google.gson.annotations.SerializedName
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import retrofit2.Response
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
+import retrofit2.http.Header
+import retrofit2.http.Multipart
+import retrofit2.http.POST
+import retrofit2.http.Part
+
+interface PixelfedApi {
+
+    @FormUrlEncoded
+    @POST("api/v1/apps")
+    suspend fun registerApp(
+        @Field("client_name") clientName: String,
+        @Field("redirect_uris") redirectUris: String,
+        @Field("scopes") scopes: String,
+        @Field("website") website: String
+    ): Response<RegisterAppResponse>
+
+    @FormUrlEncoded
+    @POST("oauth/token")
+    suspend fun fetchAccessToken(
+        @Field("client_id") clientId: String,
+        @Field("client_secret") clientSecret: String,
+        @Field("redirect_uri") redirectUri: String,
+        @Field("grant_type") grantType: String = "authorization_code",
+        @Field("code") code: String,
+        @Field("scope") scope: String
+    ): Response<TokenResponse>
+
+    @Multipart
+    @POST("api/v1/media")
+    suspend fun uploadMedia(
+        @Header("Authorization") authHeader: String,
+        @Part file: MultipartBody.Part,
+        @Part("description") description: RequestBody? = null
+    ): Response<MediaResponse>
+
+    @FormUrlEncoded
+    @POST("api/v1/statuses")
+    suspend fun createStatus(
+        @Header("Authorization") authHeader: String,
+        @Field("status") status: String,
+        @Field("media_ids[]") mediaIds: List<String>
+    ): Response<StatusResponse>
+}
+
+data class RegisterAppResponse(
+    @SerializedName("id") val id: JsonElement? = null,
+    @SerializedName("client_id") val clientId: JsonElement? = null,
+    @SerializedName("client_secret") val clientSecret: JsonElement? = null
+) {
+    fun getClientIdString(): String? = when {
+        clientId == null || clientId.isJsonNull -> null
+        clientId.isJsonPrimitive -> clientId.asString
+        else -> clientId.toString()
+    }
+
+    fun getClientSecretString(): String? = when {
+        clientSecret == null || clientSecret.isJsonNull -> null
+        clientSecret.isJsonPrimitive -> clientSecret.asString
+        else -> clientSecret.toString()
+    }
+}
+
+data class TokenResponse(
+    @SerializedName("access_token") val accessToken: JsonElement? = null,
+    @SerializedName("token_type") val tokenType: JsonElement? = null,
+    @SerializedName("scope") val scope: JsonElement? = null,
+    @SerializedName("created_at") val createdAt: JsonElement? = null
+) {
+    fun getAccessTokenString(): String? = when {
+        accessToken == null || accessToken.isJsonNull -> null
+        accessToken.isJsonPrimitive -> accessToken.asString
+        else -> accessToken.toString()
+    }
+}
+
+data class MediaResponse(
+    @SerializedName("id") val id: JsonElement? = null,
+    @SerializedName("type") val type: JsonElement? = null,
+    @SerializedName("url") val url: JsonElement? = null,
+    @SerializedName("preview_url") val previewUrl: JsonElement? = null
+) {
+    fun getIdString(): String? = when {
+        id == null || id.isJsonNull -> null
+        id.isJsonPrimitive -> id.asString
+        else -> id.toString()
+    }
+}
+
+data class StatusResponse(
+    @SerializedName("id") val id: JsonElement? = null,
+    @SerializedName("url") val url: JsonElement? = null
+) {
+    fun getIdString(): String? = when {
+        id == null || id.isJsonNull -> null
+        id.isJsonPrimitive -> id.asString
+        else -> id.toString()
+    }
+}
