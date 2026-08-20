@@ -5,6 +5,7 @@ import android.net.Uri
 import com.example.pixelfed.data.api.PixelfedApi
 import com.example.pixelfed.data.api.StatusResponse
 import com.example.pixelfed.data.auth.TokenManager
+import com.example.pixelfed.utils.ImageUtils
 import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -91,13 +92,21 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
         }
     }
 
-    suspend fun uploadPhotoAndCreateStatus(imageUri: Uri, caption: String): Result<StatusResponse> = withContext(Dispatchers.IO) {
+    suspend fun uploadPhotoAndCreateStatus(
+        imageUri: Uri,
+        caption: String,
+        resizeTo8Mb: Boolean = false
+    ): Result<StatusResponse> = withContext(Dispatchers.IO) {
         try {
             val instanceUrl = tokenManager.instanceUrl ?: return@withContext Result.failure(Exception("Not logged in"))
             val accessToken = tokenManager.accessToken ?: return@withContext Result.failure(Exception("Not logged in"))
 
             val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
-            val file = getFileFromUri(imageUri) ?: return@withContext Result.failure(Exception("Unable to process image file"))
+            val file = if (resizeTo8Mb) {
+                ImageUtils.resizeImageDownToMaxBytes(context, imageUri, ImageUtils.MAX_BYTES_8MB)
+            } else {
+                getFileFromUri(imageUri)
+            } ?: return@withContext Result.failure(Exception("Unable to process image file"))
 
             val requestFile = file.asRequestBody("image/*".toMediaTypeOrNull())
             val multipartBody = MultipartBody.Part.createFormData("file", file.name, requestFile)
