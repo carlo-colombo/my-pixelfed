@@ -36,8 +36,18 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             .build()
     }
 
-    suspend fun registerApp(instanceUrl: String, redirectUri: String): Pair<String, String>? = withContext(Dispatchers.IO) {
+    suspend fun registerApp(instanceUrl: String, redirectUri: String): Result<Pair<String, String>> = withContext(Dispatchers.IO) {
         try {
+            val cachedInstance = tokenManager.instanceUrl
+            val cachedClientId = tokenManager.clientId
+            val cachedClientSecret = tokenManager.clientSecret
+
+            if (cachedInstance.equals(instanceUrl, ignoreCase = true) &&
+                !cachedClientId.isNullOrBlank() &&
+                !cachedClientSecret.isNullOrBlank()) {
+                return@withContext Result.success(Pair(cachedClientId, cachedClientSecret))
+            }
+
             val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
             val response = api.registerApp(
                 clientName = "Pixelfed Android Client",
@@ -53,13 +63,23 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                     tokenManager.clientId = clientId
                     tokenManager.clientSecret = clientSecret
                     tokenManager.instanceUrl = instanceUrl
-                    return@withContext Pair(clientId, clientSecret)
+                    return@withContext Result.success(Pair(clientId, clientSecret))
+                } else {
+                    return@withContext Result.failure(Exception("Registration response missing client_id or client_secret"))
                 }
+            } else {
+                val errBody = response.errorBody()?.string()?.takeIf { it.isNotBlank() } ?: response.message()
+                val errorMsg = if (!errBody.isNullOrBlank()) {
+                    "Registration error (${response.code()}): $errBody"
+                } else {
+                    "Registration failed with HTTP ${response.code()}"
+                }
+                return@withContext Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            return@withContext Result.failure(e)
         }
-        return@withContext null
     }
 
     suspend fun exchangeCodeForToken(code: String, redirectUri: String): Result<String> = withContext(Dispatchers.IO) {

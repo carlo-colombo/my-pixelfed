@@ -123,7 +123,17 @@ fun LoginScreen(
                         clientIdToUse = manualClientId.trim()
                     } else {
                         val result = repository.registerApp(formattedUrl, redirectUri)
-                        clientIdToUse = result?.first
+                        if (result.isSuccess) {
+                            clientIdToUse = result.getOrNull()?.first
+                        } else {
+                            clientIdToUse = null
+                            val detail = result.exceptionOrNull()?.message
+                            errorMessage = if (!detail.isNullOrBlank()) {
+                                detail
+                            } else {
+                                "Failed to register app dynamically on instance. Try entering Client ID & Secret manually under Advanced options."
+                            }
+                        }
                     }
 
                     isLoading = false
@@ -140,8 +150,6 @@ fun LoginScreen(
 
                         val customTabsIntent = CustomTabsIntent.Builder().build()
                         customTabsIntent.launchUrl(context, authUrl)
-                    } else {
-                        errorMessage = "Failed to register app dynamically on instance. Try entering Client ID & Secret manually under Advanced options."
                     }
                 }
             },
