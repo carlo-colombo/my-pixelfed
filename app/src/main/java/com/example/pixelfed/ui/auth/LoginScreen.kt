@@ -21,7 +21,8 @@ import kotlinx.coroutines.launch
 fun LoginScreen(
     context: Context,
     tokenManager: TokenManager,
-    repository: PixelfedRepository
+    repository: PixelfedRepository,
+    initialErrorMessage: String? = null
 ) {
     var instanceUrl by remember { mutableStateOf("https://pixelfed.social") }
     var manualClientId by remember { mutableStateOf("") }
@@ -29,7 +30,13 @@ fun LoginScreen(
     var showManualCredentials by remember { mutableStateOf(false) }
 
     var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(initialErrorMessage) }
+
+    LaunchedEffect(initialErrorMessage) {
+        if (!initialErrorMessage.isNullOrBlank()) {
+            errorMessage = initialErrorMessage
+        }
+    }
     val scope = rememberCoroutineScope()
 
     val redirectUri = "pixelfed-app://oauth"

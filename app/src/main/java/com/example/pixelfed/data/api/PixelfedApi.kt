@@ -47,7 +47,7 @@ interface PixelfedApi {
         @Field("grant_type") grantType: String = "authorization_code",
         @Field("code") code: String,
         @Field("scope") scope: String
-    ): Response<TokenResponse>
+    ): Response<okhttp3.ResponseBody>
 
     @Multipart
     @POST("api/v1/media")

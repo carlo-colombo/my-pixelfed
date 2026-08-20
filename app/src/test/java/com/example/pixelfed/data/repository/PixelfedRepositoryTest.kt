@@ -57,6 +57,19 @@ class PixelfedRepositoryTest {
     }
 
     @Test
+    fun testParseTokenResponseBody_handlesValidAndInvalidJson() {
+        // Valid token response
+        val validTokenJson = """{"access_token":"token_12345","token_type":"Bearer","scope":"read write"}"""
+        val token = PixelfedRepository.parseTokenResponseBody(validTokenJson)
+        assertEquals("token_12345", token)
+
+        // Missing access_token
+        val missingTokenJson = """{"error":"invalid_grant"}"""
+        val nullToken = PixelfedRepository.parseTokenResponseBody(missingTokenJson)
+        assertEquals(null, nullToken)
+    }
+
+    @Test
     fun testParseRegistrationResponseBody_handlesValidAndInvalidJson() {
         // Valid JSON with client_id and client_secret
         val validJson = """{"id":123,"client_id":"id_abc","client_secret":"sec_123"}"""

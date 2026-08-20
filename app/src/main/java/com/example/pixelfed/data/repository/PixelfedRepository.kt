@@ -92,9 +92,17 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
 
     suspend fun exchangeCodeForToken(code: String, redirectUri: String): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val instanceUrl = tokenManager.instanceUrl ?: return@withContext Result.failure(Exception("Missing instance URL"))
-            val clientId = tokenManager.clientId ?: return@withContext Result.failure(Exception("Missing Client ID"))
-            val clientSecret = tokenManager.clientSecret ?: return@withContext Result.failure(Exception("Missing Client Secret"))
+            val instanceUrl = tokenManager.instanceUrl
+            val clientId = tokenManager.clientId
+            val clientSecret = tokenManager.clientSecret
+
+            if (instanceUrl.isNullOrBlank() || clientId.isNullOrBlank() || clientSecret.isNullOrBlank()) {
+                val missing = mutableListOf<String>()
+                if (instanceUrl.isNullOrBlank()) missing.add("instanceUrl")
+                if (clientId.isNullOrBlank()) missing.add("clientId")
+                if (clientSecret.isNullOrBlank()) missing.add("clientSecret")
+                return@withContext Result.failure(Exception("Missing OAuth credentials required for token exchange: ${missing.joinToString()}"))
+            }
 
             val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
             val response = api.fetchAccessToken(
@@ -106,20 +114,34 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             )
 
             if (response.isSuccessful && response.body() != null) {
-                val accessToken = response.body()!!.getAccessTokenString()
+                val rawBodyString = response.body()!!.string()
+                val accessToken = parseTokenResponseBody(rawBodyString)
                 if (!accessToken.isNullOrBlank()) {
                     tokenManager.accessToken = accessToken
                     return@withContext Result.success(accessToken)
                 } else {
-                    return@withContext Result.failure(Exception("Access token was empty in response"))
+                    val preview = if (rawBodyString.length > 200) rawBodyString.take(200) + "..." else rawBodyString
+                    return@withContext Result.failure(Exception("Access token missing in OAuth response ($preview)"))
                 }
             } else {
-                val errBody = response.errorBody()?.string() ?: "HTTP ${response.code()}"
-                return@withContext Result.failure(Exception("Token error (${response.code()}): $errBody"))
+                val rawErrBody = response.errorBody()?.string()?.trim()
+                val parsedMsg = if (!rawErrBody.isNullOrEmpty()) {
+                    parseErrorResponseBody(rawErrBody)
+                } else {
+                    response.message().ifBlank { "HTTP ${response.code()}" }
+                }
+
+                val fullError = "OAuth Token error (HTTP ${response.code()}): $parsedMsg"
+                return@withContext Result.failure(Exception(fullError))
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             e.printStackTrace()
-            return@withContext Result.failure(e)
+            val sw = java.io.StringWriter()
+            e.printStackTrace(java.io.PrintWriter(sw))
+            val stackTraceString = sw.toString()
+            val causeMessage = e.localizedMessage ?: e.message ?: e.toString()
+            val errorMsg = "OAuth token exchange failed (${e.javaClass.name}): $causeMessage\n\nStacktrace:\n$stackTraceString"
+            return@withContext Result.failure(Exception(errorMsg, e))
         }
     }
 
@@ -222,6 +244,19 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
     }
 
     companion object {
+        fun parseTokenResponseBody(rawBody: String): String? {
+            return try {
+                val jsonElement = com.google.gson.JsonParser.parseString(rawBody)
+                if (jsonElement != null && jsonElement.isJsonObject) {
+                    jsonElement.asJsonObject.get("access_token").toSafeString()
+                } else {
+                    null
+                }
+            } catch (t: Throwable) {
+                null
+            }
+        }
+
         fun parseRegistrationResponseBody(rawBody: String): Pair<String?, String?> {
             return try {
                 val jsonElement = com.google.gson.JsonParser.parseString(rawBody)
