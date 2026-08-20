@@ -81,8 +81,11 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             }
         } catch (e: Throwable) {
             e.printStackTrace()
+            val sw = java.io.StringWriter()
+            e.printStackTrace(java.io.PrintWriter(sw))
+            val stackTraceString = sw.toString()
             val causeMessage = e.localizedMessage ?: e.message ?: e.toString()
-            val errorMsg = "Network/Registration failed (${e.javaClass.simpleName}): $causeMessage"
+            val errorMsg = "Network/Registration failed (${e.javaClass.name}): $causeMessage\n\nStacktrace:\n$stackTraceString"
             return@withContext Result.failure(Exception(errorMsg, e))
         }
     }
