@@ -55,4 +55,23 @@ class PixelfedRepositoryTest {
         assertEquals(1, topTags.size)
         assertEquals("nature", topTags[0])
     }
+
+    @Test
+    fun testParseErrorResponseBody_handlesVariousJsonStructuresAndPrimitives() {
+        // Standard error + error_description
+        val json1 = """{"error":"invalid_client","error_description":"Client registration failed"}"""
+        assertEquals("invalid_client: Client registration failed", PixelfedRepository.parseErrorResponseBody(json1))
+
+        // Message field
+        val json2 = """{"message":"The given data was invalid."}"""
+        assertEquals("The given data was invalid.", PixelfedRepository.parseErrorResponseBody(json2))
+
+        // Array body (no exception thrown)
+        val json3 = """["An error occurred", "Details"]"""
+        assertEquals("""["An error occurred", "Details"]""", PixelfedRepository.parseErrorResponseBody(json3))
+
+        // Non-JSON string / HTML
+        val html = "<html><body>500 Internal Server Error</body></html>"
+        assertEquals(html, PixelfedRepository.parseErrorResponseBody(html))
+    }
 }

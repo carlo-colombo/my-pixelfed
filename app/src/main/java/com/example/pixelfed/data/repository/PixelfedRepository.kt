@@ -70,21 +70,7 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             } else {
                 val rawErrBody = response.errorBody()?.string()?.trim()
                 val parsedMsg = if (!rawErrBody.isNullOrEmpty()) {
-                    try {
-                        val jsonObject = com.google.gson.JsonParser.parseString(rawErrBody).asJsonObject
-                        val errorVal = jsonObject.get("error")?.asString
-                        val descVal = jsonObject.get("error_description")?.asString
-                        val msgVal = jsonObject.get("message")?.asString
-                        when {
-                            !errorVal.isNullOrBlank() && !descVal.isNullOrBlank() -> "$errorVal: $descVal"
-                            !descVal.isNullOrBlank() -> descVal
-                            !errorVal.isNullOrBlank() -> errorVal
-                            !msgVal.isNullOrBlank() -> msgVal
-                            else -> rawErrBody
-                        }
-                    } catch (pe: Exception) {
-                        rawErrBody
-                    }
+                    parseErrorResponseBody(rawErrBody)
                 } else {
                     response.message().ifBlank { "HTTP ${response.code()}" }
                 }
@@ -92,7 +78,7 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 val fullError = "Registration error (HTTP ${response.code()}): $parsedMsg"
                 return@withContext Result.failure(Exception(fullError))
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             e.printStackTrace()
             val causeMessage = e.localizedMessage ?: e.message ?: e.toString()
             val errorMsg = "Network/Registration failed (${e.javaClass.simpleName}): $causeMessage"
@@ -232,6 +218,41 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
     }
 
     companion object {
+        fun parseErrorResponseBody(rawErrBody: String): String {
+            return try {
+                val jsonElement = com.google.gson.JsonParser.parseString(rawErrBody)
+                if (jsonElement.isJsonObject) {
+                    val jsonObject = jsonElement.asJsonObject
+
+                    val errorElem = jsonObject.get("error")
+                    val descElem = jsonObject.get("error_description")
+                    val msgElem = jsonObject.get("message")
+
+                    fun getStringFromElem(elem: com.google.gson.JsonElement?): String? = when {
+                        elem == null || elem.isJsonNull -> null
+                        elem.isJsonPrimitive -> elem.asString
+                        else -> elem.toString()
+                    }
+
+                    val errorVal = getStringFromElem(errorElem)
+                    val descVal = getStringFromElem(descElem)
+                    val msgVal = getStringFromElem(msgElem)
+
+                    when {
+                        !errorVal.isNullOrBlank() && !descVal.isNullOrBlank() -> "$errorVal: $descVal"
+                        !descVal.isNullOrBlank() -> descVal
+                        !errorVal.isNullOrBlank() -> errorVal
+                        !msgVal.isNullOrBlank() -> msgVal
+                        else -> rawErrBody
+                    }
+                } else {
+                    rawErrBody
+                }
+            } catch (t: Throwable) {
+                rawErrBody
+            }
+        }
+
         fun extractTopTagsFromStatuses(statuses: List<StatusItem>, topCount: Int = 20): List<String> {
             val tagCounts = mutableMapOf<String, Int>()
 
