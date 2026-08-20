@@ -6,10 +6,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import com.example.pixelfed.data.repository.PixelfedRepository
@@ -34,17 +39,56 @@ fun UploadScreen(
 ) {
     val context = LocalContext.current
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
-    var caption by remember { mutableStateOf("") }
+    var captionState by remember { mutableStateOf(TextFieldValue("")) }
     var resizeTo8Mb by remember { mutableStateOf(false) }
     var isUploading by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
+
+    var topTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isLoadingTags by remember { mutableStateOf(false) }
 
     var originalMetadata by remember { mutableStateOf<ImageMetadata?>(null) }
     var resizedMetadata by remember { mutableStateOf<ImageMetadata?>(null) }
     var isCalculatingResized by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
+
+    fun fetchTags(forceRefresh: Boolean = false) {
+        scope.launch {
+            isLoadingTags = true
+            val result = repository.getUserTopTags(forceRefresh = forceRefresh)
+            result.fold(
+                onSuccess = { tags ->
+                    topTags = tags
+                },
+                onFailure = {
+                    // Ignore tag loading errors gracefully or keep existing tags
+                }
+            )
+            isLoadingTags = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        fetchTags(forceRefresh = false)
+    }
+
+    fun insertTagAtCursor(tag: String) {
+        val tagToInsert = "#$tag "
+        val currentText = captionState.text
+        val selection = captionState.selection
+        val start = selection.min.coerceAtLeast(0)
+        val end = selection.max.coerceAtLeast(0)
+
+        val newText = currentText.substring(0, start) + tagToInsert + currentText.substring(end)
+        val newCursorPos = start + tagToInsert.length
+
+        captionState = TextFieldValue(
+            text = newText,
+            selection = TextRange(newCursorPos)
+        )
+    }
 
     LaunchedEffect(selectedImageUri) {
         val uri = selectedImageUri
@@ -206,8 +250,8 @@ fun UploadScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
-                value = caption,
-                onValueChange = { caption = it },
+                value = captionState,
+                onValueChange = { captionState = it },
                 label = { Text("Write a caption...") },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -215,7 +259,64 @@ fun UploadScreen(
                 maxLines = 5
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Top Tags",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    IconButton(
+                        onClick = { fetchTags(forceRefresh = true) },
+                        enabled = !isLoadingTags
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh tags"
+                        )
+                    }
+                }
+
+                if (isLoadingTags) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    )
+                } else if (topTags.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        topTags.forEach { tag ->
+                            SuggestionChip(
+                                onClick = { insertTagAtCursor(tag) },
+                                label = { Text("#$tag") }
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "No tags found",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             if (statusMessage != null) {
                 Text(
@@ -241,7 +342,7 @@ fun UploadScreen(
                     scope.launch {
                         val result = repository.uploadPhotoAndCreateStatus(
                             imageUri = selectedImageUri!!,
-                            caption = caption,
+                            caption = captionState.text,
                             resizeTo8Mb = resizeTo8Mb
                         )
                         isUploading = false
@@ -250,7 +351,7 @@ fun UploadScreen(
                                 statusMessage = "Successfully uploaded photo to Pixelfed!"
                                 isError = false
                                 selectedImageUri = null
-                                caption = ""
+                                captionState = TextFieldValue("")
                             },
                             onFailure = { ex ->
                                 statusMessage = "Upload failed: ${ex.localizedMessage ?: "Unknown error"}"
