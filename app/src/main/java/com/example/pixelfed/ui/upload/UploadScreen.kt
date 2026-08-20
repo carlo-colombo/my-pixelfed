@@ -1,6 +1,7 @@
 package com.example.pixelfed.ui.upload
 
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -60,10 +61,11 @@ fun UploadScreen(
             val result = repository.getUserTopTags(forceRefresh = forceRefresh)
             result.fold(
                 onSuccess = { tags ->
+                    Log.d("UploadScreen", "fetchTags success: loaded ${tags.size} tags: $tags")
                     topTags = tags
                 },
-                onFailure = {
-                    // Ignore tag loading errors gracefully or keep existing tags
+                onFailure = { ex ->
+                    Log.e("UploadScreen", "fetchTags failure: ${ex.message}", ex)
                 }
             )
             isLoadingTags = false

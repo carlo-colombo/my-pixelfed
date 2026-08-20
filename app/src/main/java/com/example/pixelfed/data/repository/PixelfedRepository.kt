@@ -2,6 +2,7 @@ package com.example.pixelfed.data.repository
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.example.pixelfed.data.api.PixelfedApi
 import com.example.pixelfed.data.api.StatusResponse
 import com.example.pixelfed.data.api.StatusItem
@@ -204,46 +205,65 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 try {
                     val listType = object : TypeToken<List<String>>() {}.type
                     val cachedList: List<String> = Gson().fromJson(cachedJson, listType)
+                    Log.d(TAG, "getUserTopTags: returning ${cachedList.size} cached tags")
                     return@withContext Result.success(cachedList)
                 } catch (e: Exception) {
-                    // fall back to fetching if JSON parsing fails
+                    Log.w(TAG, "getUserTopTags: failed to parse cached tags JSON", e)
                 }
             }
         }
 
         try {
-            val instanceUrl = tokenManager.instanceUrl ?: return@withContext Result.failure(Exception("Not logged in"))
-            val accessToken = tokenManager.accessToken ?: return@withContext Result.failure(Exception("Not logged in"))
+            val instanceUrl = tokenManager.instanceUrl
+            val accessToken = tokenManager.accessToken
+            if (instanceUrl.isNullOrBlank() || accessToken.isNullOrBlank()) {
+                Log.e(TAG, "getUserTopTags failed: not logged in (instanceUrl=$instanceUrl, hasToken=${!accessToken.isNullOrBlank()})")
+                return@withContext Result.failure(Exception("Not logged in"))
+            }
 
             val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
             val authHeader = "Bearer $accessToken"
 
             val accountResponse = api.verifyCredentials(authHeader)
             if (!accountResponse.isSuccessful || accountResponse.body() == null) {
-                return@withContext Result.failure(Exception("Failed to verify user credentials"))
+                val err = "Failed to verify credentials (HTTP ${accountResponse.code()}): ${accountResponse.errorBody()?.string()}"
+                Log.e(TAG, "getUserTopTags: $err")
+                return@withContext Result.failure(Exception(err))
             }
 
             val userId = accountResponse.body()!!.getIdString()
-                ?: return@withContext Result.failure(Exception("User ID not found"))
+            if (userId.isNullOrBlank()) {
+                Log.e(TAG, "getUserTopTags: User ID not found in verify_credentials response")
+                return@withContext Result.failure(Exception("User ID not found"))
+            }
+
+            Log.d(TAG, "getUserTopTags: Verified user credentials, userId=$userId. Fetching statuses...")
 
             val statusesResponse = api.getUserStatuses(authHeader, userId, limit = 100)
             if (!statusesResponse.isSuccessful || statusesResponse.body() == null) {
-                return@withContext Result.failure(Exception("Failed to fetch user statuses"))
+                val err = "Failed to fetch user statuses (HTTP ${statusesResponse.code()}): ${statusesResponse.errorBody()?.string()}"
+                Log.e(TAG, "getUserTopTags: $err")
+                return@withContext Result.failure(Exception(err))
             }
 
             val statuses = statusesResponse.body()!!
+            Log.d(TAG, "getUserTopTags: Retrieved ${statuses.size} statuses for userId=$userId")
+
             val topTags = extractTopTagsFromStatuses(statuses, topCount = 20)
+            Log.d(TAG, "getUserTopTags: Extracted ${topTags.size} top tags from ${statuses.size} statuses: $topTags")
 
             tokenManager.cachedTagsJson = Gson().toJson(topTags)
             tokenManager.tagsCacheTime = currentTime
 
             Result.success(topTags)
         } catch (e: Exception) {
+            Log.e(TAG, "getUserTopTags failed with exception", e)
             Result.failure(e)
         }
     }
 
     companion object {
+        private const val TAG = "PixelfedRepository"
         fun parseTokenResponseBody(rawBody: String): String? {
             return try {
                 val jsonElement = com.google.gson.JsonParser.parseString(rawBody)
