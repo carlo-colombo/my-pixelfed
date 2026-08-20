@@ -3,21 +3,28 @@ package com.example.pixelfed.ui.auth
 import android.content.Context
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.pixelfed.data.auth.TokenManager
 import com.example.pixelfed.data.repository.PixelfedRepository
 import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
     context: Context,
+    tokenManager: TokenManager,
     repository: PixelfedRepository
 ) {
     var instanceUrl by remember { mutableStateOf("https://pixelfed.social") }
+    var manualClientId by remember { mutableStateOf("") }
+    var manualClientSecret by remember { mutableStateOf("") }
+    var showManualCredentials by remember { mutableStateOf(false) }
+
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -45,6 +52,40 @@ fun LoginScreen(
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showManualCredentials = !showManualCredentials }
+        ) {
+            Text(
+                text = if (showManualCredentials) "▲ Hide manual API credentials" else "▼ Advanced: Enter Client ID & Secret",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        if (showManualCredentials) {
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = manualClientId,
+                onValueChange = { manualClientId = it },
+                label = { Text("Client ID (Optional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = manualClientSecret,
+                onValueChange = { manualClientSecret = it },
+                label = { Text("Client Secret (Optional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -74,15 +115,24 @@ fun LoginScreen(
                 errorMessage = null
 
                 scope.launch {
-                    val result = repository.registerApp(formattedUrl, redirectUri)
+                    val clientIdToUse: String?
+                    if (manualClientId.isNotBlank() && manualClientSecret.isNotBlank()) {
+                        tokenManager.instanceUrl = formattedUrl
+                        tokenManager.clientId = manualClientId.trim()
+                        tokenManager.clientSecret = manualClientSecret.trim()
+                        clientIdToUse = manualClientId.trim()
+                    } else {
+                        val result = repository.registerApp(formattedUrl, redirectUri)
+                        clientIdToUse = result?.first
+                    }
+
                     isLoading = false
-                    if (result != null) {
-                        val clientId = result.first
+                    if (!clientIdToUse.isNullOrBlank()) {
                         val authUrl = Uri.parse(formattedUrl)
                             .buildUpon()
                             .appendPath("oauth")
                             .appendPath("authorize")
-                            .appendQueryParameter("client_id", clientId)
+                            .appendQueryParameter("client_id", clientIdToUse)
                             .appendQueryParameter("redirect_uri", redirectUri)
                             .appendQueryParameter("response_type", "code")
                             .appendQueryParameter("scope", "read write follow")
@@ -91,7 +141,7 @@ fun LoginScreen(
                         val customTabsIntent = CustomTabsIntent.Builder().build()
                         customTabsIntent.launchUrl(context, authUrl)
                     } else {
-                        errorMessage = "Failed to register app on instance"
+                        errorMessage = "Failed to register app dynamically on instance. Try entering Client ID & Secret manually under Advanced options."
                     }
                 }
             },

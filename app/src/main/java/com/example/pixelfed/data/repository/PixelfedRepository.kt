@@ -54,11 +54,11 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
         return@withContext null
     }
 
-    suspend fun exchangeCodeForToken(code: String, redirectUri: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun exchangeCodeForToken(code: String, redirectUri: String): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val instanceUrl = tokenManager.instanceUrl ?: return@withContext false
-            val clientId = tokenManager.clientId ?: return@withContext false
-            val clientSecret = tokenManager.clientSecret ?: return@withContext false
+            val instanceUrl = tokenManager.instanceUrl ?: return@withContext Result.failure(Exception("Missing instance URL"))
+            val clientId = tokenManager.clientId ?: return@withContext Result.failure(Exception("Missing Client ID"))
+            val clientSecret = tokenManager.clientSecret ?: return@withContext Result.failure(Exception("Missing Client Secret"))
 
             val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
             val response = api.fetchAccessToken(
@@ -73,13 +73,18 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 val accessToken = response.body()!!.accessToken
                 if (!accessToken.isNullOrBlank()) {
                     tokenManager.accessToken = accessToken
-                    return@withContext true
+                    return@withContext Result.success(accessToken)
+                } else {
+                    return@withContext Result.failure(Exception("Access token was empty in response"))
                 }
+            } else {
+                val errBody = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                return@withContext Result.failure(Exception("Token error (${response.code()}): $errBody"))
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            return@withContext Result.failure(e)
         }
-        return@withContext false
     }
 
     suspend fun uploadPhotoAndCreateStatus(imageUri: Uri, caption: String): Result<StatusResponse> = withContext(Dispatchers.IO) {

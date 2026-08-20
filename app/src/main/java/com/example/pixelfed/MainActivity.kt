@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
                     } else {
                         LoginScreen(
                             context = this,
+                            tokenManager = tokenManager,
                             repository = repository
                         )
                     }
@@ -91,20 +92,17 @@ class MainActivity : ComponentActivity() {
             if (code != null) {
                 isAuthProcessing.value = true
                 CoroutineScope(Dispatchers.Main).launch {
-                    try {
-                        val success = repository.exchangeCodeForToken(code, "pixelfed-app://oauth")
-                        isAuthProcessing.value = false
-                        if (success) {
+                    val result = repository.exchangeCodeForToken(code, "pixelfed-app://oauth")
+                    isAuthProcessing.value = false
+                    result.fold(
+                        onSuccess = {
                             isLoggedInState.value = true
                             Toast.makeText(this@MainActivity, "Logged in successfully!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(this@MainActivity, "OAuth login failed", Toast.LENGTH_LONG).show()
+                        },
+                        onFailure = { ex ->
+                            Toast.makeText(this@MainActivity, "OAuth Failed: ${ex.message}", Toast.LENGTH_LONG).show()
                         }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        isAuthProcessing.value = false
-                        Toast.makeText(this@MainActivity, "Authentication error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                    }
+                    )
                 }
             }
         }

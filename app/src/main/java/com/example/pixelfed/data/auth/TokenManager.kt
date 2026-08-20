@@ -15,25 +15,33 @@ class TokenManager(context: Context) {
 
     var instanceUrl: String?
         get() = prefs.getString(KEY_INSTANCE_URL, null)
-        set(value) = prefs.edit().putString(KEY_INSTANCE_URL, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_INSTANCE_URL, value).commit()
+        }
 
     var accessToken: String?
         get() = prefs.getString(KEY_ACCESS_TOKEN, null)
-        set(value) = prefs.edit().putString(KEY_ACCESS_TOKEN, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_ACCESS_TOKEN, value).commit()
+        }
 
     var clientId: String?
         get() = prefs.getString(KEY_CLIENT_ID, null)
-        set(value) = prefs.edit().putString(KEY_CLIENT_ID, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_CLIENT_ID, value).commit()
+        }
 
     var clientSecret: String?
         get() = prefs.getString(KEY_CLIENT_SECRET, null)
-        set(value) = prefs.edit().putString(KEY_CLIENT_SECRET, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_CLIENT_SECRET, value).commit()
+        }
 
     fun isLoggedIn(): Boolean {
         return !accessToken.isNullOrBlank() && !instanceUrl.isNullOrBlank()
     }
 
     fun clear() {
-        prefs.edit().clear().apply()
+        prefs.edit().clear().commit()
     }
 }
