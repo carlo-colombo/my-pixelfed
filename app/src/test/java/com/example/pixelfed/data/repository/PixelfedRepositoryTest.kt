@@ -57,6 +57,27 @@ class PixelfedRepositoryTest {
     }
 
     @Test
+    fun testParseRegistrationResponseBody_handlesValidAndInvalidJson() {
+        // Valid JSON with client_id and client_secret
+        val validJson = """{"id":123,"client_id":"id_abc","client_secret":"sec_123"}"""
+        val (clientId, clientSecret) = PixelfedRepository.parseRegistrationResponseBody(validJson)
+        assertEquals("id_abc", clientId)
+        assertEquals("sec_123", clientSecret)
+
+        // Missing fields
+        val missingJson = """{"id":123}"""
+        val (nullId, nullSecret) = PixelfedRepository.parseRegistrationResponseBody(missingJson)
+        assertEquals(null, nullId)
+        assertEquals(null, nullSecret)
+
+        // Non-JSON / HTML
+        val html = "<html><body>500 Error</body></html>"
+        val (htmlId, htmlSecret) = PixelfedRepository.parseRegistrationResponseBody(html)
+        assertEquals(null, htmlId)
+        assertEquals(null, htmlSecret)
+    }
+
+    @Test
     fun testParseErrorResponseBody_handlesVariousJsonStructuresAndPrimitives() {
         // Standard error + error_description
         val json1 = """{"error":"invalid_client","error_description":"Client registration failed"}"""

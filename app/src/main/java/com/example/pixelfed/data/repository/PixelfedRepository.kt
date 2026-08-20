@@ -56,16 +56,16 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 website = "https://pixelfed.org"
             )
             if (response.isSuccessful && response.body() != null) {
-                val body = response.body()!!
-                val clientId = body.getClientIdString()
-                val clientSecret = body.getClientSecretString()
+                val rawBodyString = response.body()!!.string()
+                val (clientId, clientSecret) = parseRegistrationResponseBody(rawBodyString)
                 if (!clientId.isNullOrBlank() && !clientSecret.isNullOrBlank()) {
                     tokenManager.clientId = clientId
                     tokenManager.clientSecret = clientSecret
                     tokenManager.instanceUrl = instanceUrl
                     return@withContext Result.success(Pair(clientId, clientSecret))
                 } else {
-                    return@withContext Result.failure(Exception("Registration response missing client_id or client_secret"))
+                    val preview = if (rawBodyString.length > 200) rawBodyString.take(200) + "..." else rawBodyString
+                    return@withContext Result.failure(Exception("Registration response missing client_id or client_secret ($preview)"))
                 }
             } else {
                 val rawErrBody = response.errorBody()?.string()?.trim()
@@ -218,6 +218,27 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
     }
 
     companion object {
+        fun parseRegistrationResponseBody(rawBody: String): Pair<String?, String?> {
+            return try {
+                val jsonElement = com.google.gson.JsonParser.parseString(rawBody)
+                if (jsonElement.isJsonObject) {
+                    val obj = jsonElement.asJsonObject
+                    fun getStringFromElem(elem: com.google.gson.JsonElement?): String? = when {
+                        elem == null || elem.isJsonNull -> null
+                        elem.isJsonPrimitive -> elem.asString
+                        else -> elem.toString()
+                    }
+                    val clientId = getStringFromElem(obj.get("client_id"))
+                    val clientSecret = getStringFromElem(obj.get("client_secret"))
+                    Pair(clientId, clientSecret)
+                } else {
+                    Pair(null, null)
+                }
+            } catch (t: Throwable) {
+                Pair(null, null)
+            }
+        }
+
         fun parseErrorResponseBody(rawErrBody: String): String {
             return try {
                 val jsonElement = com.google.gson.JsonParser.parseString(rawErrBody)

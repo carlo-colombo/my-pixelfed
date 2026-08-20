@@ -36,7 +36,7 @@ interface PixelfedApi {
         @Field("redirect_uris") redirectUris: String,
         @Field("scopes") scopes: String,
         @Field("website") website: String
-    ): Response<RegisterAppResponse>
+    ): Response<okhttp3.ResponseBody>
 
     @FormUrlEncoded
     @POST("oauth/token")
