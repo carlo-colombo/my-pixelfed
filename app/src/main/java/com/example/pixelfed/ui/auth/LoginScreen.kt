@@ -68,6 +68,7 @@ fun LoginScreen(
                 if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
                     formattedUrl = "https://$formattedUrl"
                 }
+                formattedUrl = formattedUrl.trimEnd('/')
 
                 isLoading = true
                 errorMessage = null

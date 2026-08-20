@@ -2,14 +2,14 @@ package com.example.pixelfed.data.repository
 
 import android.content.Context
 import android.net.Uri
-import com.example.pixelfed.data.api.MediaResponse
 import com.example.pixelfed.data.api.PixelfedApi
 import com.example.pixelfed.data.api.StatusResponse
 import com.example.pixelfed.data.auth.TokenManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
-import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
@@ -28,52 +28,67 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             .build()
     }
 
-    suspend fun registerApp(instanceUrl: String, redirectUri: String): Pair<String, String>? {
-        val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
-        val response = api.registerApp(
-            clientName = "Pixelfed Android Client",
-            redirectUris = redirectUri,
-            scopes = "read write follow",
-            website = "https://pixelfed.org"
-        )
-        if (response.isSuccessful && response.body() != null) {
-            val body = response.body()!!
-            tokenManager.clientId = body.clientId
-            tokenManager.clientSecret = body.clientSecret
-            tokenManager.instanceUrl = instanceUrl
-            return Pair(body.clientId, body.clientSecret)
+    suspend fun registerApp(instanceUrl: String, redirectUri: String): Pair<String, String>? = withContext(Dispatchers.IO) {
+        try {
+            val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
+            val response = api.registerApp(
+                clientName = "Pixelfed Android Client",
+                redirectUris = redirectUri,
+                scopes = "read write follow",
+                website = "https://pixelfed.org"
+            )
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                val clientId = body.clientId
+                val clientSecret = body.clientSecret
+                if (!clientId.isNullOrBlank() && !clientSecret.isNullOrBlank()) {
+                    tokenManager.clientId = clientId
+                    tokenManager.clientSecret = clientSecret
+                    tokenManager.instanceUrl = instanceUrl
+                    return@withContext Pair(clientId, clientSecret)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
-        return null
+        return@withContext null
     }
 
-    suspend fun exchangeCodeForToken(code: String, redirectUri: String): Boolean {
-        val instanceUrl = tokenManager.instanceUrl ?: return false
-        val clientId = tokenManager.clientId ?: return false
-        val clientSecret = tokenManager.clientSecret ?: return false
-
-        val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
-        val response = api.fetchAccessToken(
-            clientId = clientId,
-            clientSecret = clientSecret,
-            redirectUri = redirectUri,
-            code = code,
-            scope = "read write follow"
-        )
-
-        if (response.isSuccessful && response.body() != null) {
-            tokenManager.accessToken = response.body()!!.accessToken
-            return true
-        }
-        return false
-    }
-
-    suspend fun uploadPhotoAndCreateStatus(imageUri: Uri, caption: String): Result<StatusResponse> {
-        return try {
-            val instanceUrl = tokenManager.instanceUrl ?: return Result.failure(Exception("Not logged in"))
-            val accessToken = tokenManager.accessToken ?: return Result.failure(Exception("Not logged in"))
+    suspend fun exchangeCodeForToken(code: String, redirectUri: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val instanceUrl = tokenManager.instanceUrl ?: return@withContext false
+            val clientId = tokenManager.clientId ?: return@withContext false
+            val clientSecret = tokenManager.clientSecret ?: return@withContext false
 
             val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
-            val file = getFileFromUri(imageUri) ?: return Result.failure(Exception("Unable to process image file"))
+            val response = api.fetchAccessToken(
+                clientId = clientId,
+                clientSecret = clientSecret,
+                redirectUri = redirectUri,
+                code = code,
+                scope = "read write follow"
+            )
+
+            if (response.isSuccessful && response.body() != null) {
+                val accessToken = response.body()!!.accessToken
+                if (!accessToken.isNullOrBlank()) {
+                    tokenManager.accessToken = accessToken
+                    return@withContext true
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext false
+    }
+
+    suspend fun uploadPhotoAndCreateStatus(imageUri: Uri, caption: String): Result<StatusResponse> = withContext(Dispatchers.IO) {
+        try {
+            val instanceUrl = tokenManager.instanceUrl ?: return@withContext Result.failure(Exception("Not logged in"))
+            val accessToken = tokenManager.accessToken ?: return@withContext Result.failure(Exception("Not logged in"))
+
+            val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
+            val file = getFileFromUri(imageUri) ?: return@withContext Result.failure(Exception("Unable to process image file"))
 
             val requestFile = file.asRequestBody("image/*".toMediaTypeOrNull())
             val multipartBody = MultipartBody.Part.createFormData("file", file.name, requestFile)
@@ -86,10 +101,10 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             )
 
             if (!mediaResponse.isSuccessful || mediaResponse.body() == null) {
-                return Result.failure(Exception("Media upload failed: ${mediaResponse.code()} ${mediaResponse.errorBody()?.string()}"))
+                return@withContext Result.failure(Exception("Media upload failed: ${mediaResponse.code()} ${mediaResponse.errorBody()?.string()}"))
             }
 
-            val mediaId = mediaResponse.body()!!.id
+            val mediaId = mediaResponse.body()!!.id ?: return@withContext Result.failure(Exception("Media upload response missing ID"))
 
             val statusResponse = api.createStatus(
                 authHeader = "Bearer $accessToken",

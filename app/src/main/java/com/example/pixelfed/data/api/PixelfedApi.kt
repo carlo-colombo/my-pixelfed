@@ -51,26 +51,26 @@ interface PixelfedApi {
 }
 
 data class RegisterAppResponse(
-    @SerializedName("id") val id: String?,
-    @SerializedName("client_id") val clientId: String,
-    @SerializedName("client_secret") val clientSecret: String
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("client_id") val clientId: String? = null,
+    @SerializedName("client_secret") val clientSecret: String? = null
 )
 
 data class TokenResponse(
-    @SerializedName("access_token") val accessToken: String,
-    @SerializedName("token_type") val tokenType: String,
-    @SerializedName("scope") val scope: String,
-    @SerializedName("created_at") val createdAt: Long?
+    @SerializedName("access_token") val accessToken: String? = null,
+    @SerializedName("token_type") val tokenType: String? = null,
+    @SerializedName("scope") val scope: String? = null,
+    @SerializedName("created_at") val createdAt: Long? = null
 )
 
 data class MediaResponse(
-    @SerializedName("id") val id: String,
-    @SerializedName("type") val type: String?,
-    @SerializedName("url") val url: String?,
-    @SerializedName("preview_url") val previewUrl: String?
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("type") val type: String? = null,
+    @SerializedName("url") val url: String? = null,
+    @SerializedName("preview_url") val previewUrl: String? = null
 )
 
 data class StatusResponse(
-    @SerializedName("id") val id: String,
-    @SerializedName("url") val url: String?
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("url") val url: String? = null
 )
