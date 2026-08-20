@@ -68,17 +68,35 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                     return@withContext Result.failure(Exception("Registration response missing client_id or client_secret"))
                 }
             } else {
-                val errBody = response.errorBody()?.string()?.takeIf { it.isNotBlank() } ?: response.message()
-                val errorMsg = if (!errBody.isNullOrBlank()) {
-                    "Registration error (${response.code()}): $errBody"
+                val rawErrBody = response.errorBody()?.string()?.trim()
+                val parsedMsg = if (!rawErrBody.isNullOrEmpty()) {
+                    try {
+                        val jsonObject = com.google.gson.JsonParser.parseString(rawErrBody).asJsonObject
+                        val errorVal = jsonObject.get("error")?.asString
+                        val descVal = jsonObject.get("error_description")?.asString
+                        val msgVal = jsonObject.get("message")?.asString
+                        when {
+                            !errorVal.isNullOrBlank() && !descVal.isNullOrBlank() -> "$errorVal: $descVal"
+                            !descVal.isNullOrBlank() -> descVal
+                            !errorVal.isNullOrBlank() -> errorVal
+                            !msgVal.isNullOrBlank() -> msgVal
+                            else -> rawErrBody
+                        }
+                    } catch (pe: Exception) {
+                        rawErrBody
+                    }
                 } else {
-                    "Registration failed with HTTP ${response.code()}"
+                    response.message().ifBlank { "HTTP ${response.code()}" }
                 }
-                return@withContext Result.failure(Exception(errorMsg))
+
+                val fullError = "Registration error (HTTP ${response.code()}): $parsedMsg"
+                return@withContext Result.failure(Exception(fullError))
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            return@withContext Result.failure(e)
+            val causeMessage = e.localizedMessage ?: e.message ?: e.toString()
+            val errorMsg = "Network/Registration failed (${e.javaClass.simpleName}): $causeMessage"
+            return@withContext Result.failure(Exception(errorMsg, e))
         }
     }
 
