@@ -5,6 +5,7 @@ import android.net.Uri
 import com.example.pixelfed.data.api.PixelfedApi
 import com.example.pixelfed.data.api.StatusResponse
 import com.example.pixelfed.data.api.StatusItem
+import com.example.pixelfed.data.api.toSafeString
 import com.example.pixelfed.data.auth.TokenManager
 import com.example.pixelfed.utils.ImageUtils
 import com.google.gson.Gson
@@ -221,15 +222,10 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
         fun parseRegistrationResponseBody(rawBody: String): Pair<String?, String?> {
             return try {
                 val jsonElement = com.google.gson.JsonParser.parseString(rawBody)
-                if (jsonElement.isJsonObject) {
+                if (jsonElement != null && jsonElement.isJsonObject) {
                     val obj = jsonElement.asJsonObject
-                    fun getStringFromElem(elem: com.google.gson.JsonElement?): String? = when {
-                        elem == null || elem.isJsonNull -> null
-                        elem.isJsonPrimitive -> elem.asString
-                        else -> elem.toString()
-                    }
-                    val clientId = getStringFromElem(obj.get("client_id"))
-                    val clientSecret = getStringFromElem(obj.get("client_secret"))
+                    val clientId = obj.get("client_id").toSafeString()
+                    val clientSecret = obj.get("client_secret").toSafeString()
                     Pair(clientId, clientSecret)
                 } else {
                     Pair(null, null)
@@ -242,22 +238,12 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
         fun parseErrorResponseBody(rawErrBody: String): String {
             return try {
                 val jsonElement = com.google.gson.JsonParser.parseString(rawErrBody)
-                if (jsonElement.isJsonObject) {
+                if (jsonElement != null && jsonElement.isJsonObject) {
                     val jsonObject = jsonElement.asJsonObject
 
-                    val errorElem = jsonObject.get("error")
-                    val descElem = jsonObject.get("error_description")
-                    val msgElem = jsonObject.get("message")
-
-                    fun getStringFromElem(elem: com.google.gson.JsonElement?): String? = when {
-                        elem == null || elem.isJsonNull -> null
-                        elem.isJsonPrimitive -> elem.asString
-                        else -> elem.toString()
-                    }
-
-                    val errorVal = getStringFromElem(errorElem)
-                    val descVal = getStringFromElem(descElem)
-                    val msgVal = getStringFromElem(msgElem)
+                    val errorVal = jsonObject.get("error").toSafeString()
+                    val descVal = jsonObject.get("error_description").toSafeString()
+                    val msgVal = jsonObject.get("message").toSafeString()
 
                     when {
                         !errorVal.isNullOrBlank() && !descVal.isNullOrBlank() -> "$errorVal: $descVal"

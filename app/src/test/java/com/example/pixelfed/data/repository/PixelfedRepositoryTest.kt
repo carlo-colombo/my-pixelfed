@@ -64,6 +64,12 @@ class PixelfedRepositoryTest {
         assertEquals("id_abc", clientId)
         assertEquals("sec_123", clientSecret)
 
+        // Numeric / boolean / primitive client_id and client_secret
+        val numericJson = """{"client_id":12345,"client_secret":true}"""
+        val (numId, numSecret) = PixelfedRepository.parseRegistrationResponseBody(numericJson)
+        assertEquals("12345", numId)
+        assertEquals("true", numSecret)
+
         // Missing fields
         val missingJson = """{"id":123}"""
         val (nullId, nullSecret) = PixelfedRepository.parseRegistrationResponseBody(missingJson)
