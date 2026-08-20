@@ -36,4 +36,19 @@ class TokenManagerTest {
         tokenManager.clear()
         assertFalse(tokenManager.isLoggedIn())
     }
+
+    @Test
+    fun testClientCredentialsCaching() {
+        tokenManager.instanceUrl = "https://pixelfed.social"
+        tokenManager.clientId = "client_123"
+        tokenManager.clientSecret = "secret_456"
+
+        assertEquals("https://pixelfed.social", tokenManager.instanceUrl)
+        assertEquals("client_123", tokenManager.clientId)
+        assertEquals("secret_456", tokenManager.clientSecret)
+
+        tokenManager.clear()
+        assertEquals(null, tokenManager.clientId)
+        assertEquals(null, tokenManager.clientSecret)
+    }
 }

@@ -5,6 +5,7 @@ import android.net.Uri
 import com.example.pixelfed.data.api.PixelfedApi
 import com.example.pixelfed.data.api.StatusResponse
 import com.example.pixelfed.data.api.StatusItem
+import com.example.pixelfed.data.api.toSafeString
 import com.example.pixelfed.data.auth.TokenManager
 import com.example.pixelfed.utils.ImageUtils
 import com.google.gson.Gson
@@ -36,8 +37,18 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             .build()
     }
 
-    suspend fun registerApp(instanceUrl: String, redirectUri: String): Pair<String, String>? = withContext(Dispatchers.IO) {
+    suspend fun registerApp(instanceUrl: String, redirectUri: String): Result<Pair<String, String>> = withContext(Dispatchers.IO) {
         try {
+            val cachedInstance = tokenManager.instanceUrl
+            val cachedClientId = tokenManager.clientId
+            val cachedClientSecret = tokenManager.clientSecret
+
+            if (cachedInstance.equals(instanceUrl, ignoreCase = true) &&
+                !cachedClientId.isNullOrBlank() &&
+                !cachedClientSecret.isNullOrBlank()) {
+                return@withContext Result.success(Pair(cachedClientId, cachedClientSecret))
+            }
+
             val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
             val response = api.registerApp(
                 clientName = "Pixelfed Android Client",
@@ -46,27 +57,52 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 website = "https://pixelfed.org"
             )
             if (response.isSuccessful && response.body() != null) {
-                val body = response.body()!!
-                val clientId = body.getClientIdString()
-                val clientSecret = body.getClientSecretString()
+                val rawBodyString = response.body()!!.string()
+                val (clientId, clientSecret) = parseRegistrationResponseBody(rawBodyString)
                 if (!clientId.isNullOrBlank() && !clientSecret.isNullOrBlank()) {
                     tokenManager.clientId = clientId
                     tokenManager.clientSecret = clientSecret
                     tokenManager.instanceUrl = instanceUrl
-                    return@withContext Pair(clientId, clientSecret)
+                    return@withContext Result.success(Pair(clientId, clientSecret))
+                } else {
+                    val preview = if (rawBodyString.length > 200) rawBodyString.take(200) + "..." else rawBodyString
+                    return@withContext Result.failure(Exception("Registration response missing client_id or client_secret ($preview)"))
                 }
+            } else {
+                val rawErrBody = response.errorBody()?.string()?.trim()
+                val parsedMsg = if (!rawErrBody.isNullOrEmpty()) {
+                    parseErrorResponseBody(rawErrBody)
+                } else {
+                    response.message().ifBlank { "HTTP ${response.code()}" }
+                }
+
+                val fullError = "Registration error (HTTP ${response.code()}): $parsedMsg"
+                return@withContext Result.failure(Exception(fullError))
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             e.printStackTrace()
+            val sw = java.io.StringWriter()
+            e.printStackTrace(java.io.PrintWriter(sw))
+            val stackTraceString = sw.toString()
+            val causeMessage = e.localizedMessage ?: e.message ?: e.toString()
+            val errorMsg = "Network/Registration failed (${e.javaClass.name}): $causeMessage\n\nStacktrace:\n$stackTraceString"
+            return@withContext Result.failure(Exception(errorMsg, e))
         }
-        return@withContext null
     }
 
     suspend fun exchangeCodeForToken(code: String, redirectUri: String): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val instanceUrl = tokenManager.instanceUrl ?: return@withContext Result.failure(Exception("Missing instance URL"))
-            val clientId = tokenManager.clientId ?: return@withContext Result.failure(Exception("Missing Client ID"))
-            val clientSecret = tokenManager.clientSecret ?: return@withContext Result.failure(Exception("Missing Client Secret"))
+            val instanceUrl = tokenManager.instanceUrl
+            val clientId = tokenManager.clientId
+            val clientSecret = tokenManager.clientSecret
+
+            if (instanceUrl.isNullOrBlank() || clientId.isNullOrBlank() || clientSecret.isNullOrBlank()) {
+                val missing = mutableListOf<String>()
+                if (instanceUrl.isNullOrBlank()) missing.add("instanceUrl")
+                if (clientId.isNullOrBlank()) missing.add("clientId")
+                if (clientSecret.isNullOrBlank()) missing.add("clientSecret")
+                return@withContext Result.failure(Exception("Missing OAuth credentials required for token exchange: ${missing.joinToString()}"))
+            }
 
             val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
             val response = api.fetchAccessToken(
@@ -78,20 +114,34 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             )
 
             if (response.isSuccessful && response.body() != null) {
-                val accessToken = response.body()!!.getAccessTokenString()
+                val rawBodyString = response.body()!!.string()
+                val accessToken = parseTokenResponseBody(rawBodyString)
                 if (!accessToken.isNullOrBlank()) {
                     tokenManager.accessToken = accessToken
                     return@withContext Result.success(accessToken)
                 } else {
-                    return@withContext Result.failure(Exception("Access token was empty in response"))
+                    val preview = if (rawBodyString.length > 200) rawBodyString.take(200) + "..." else rawBodyString
+                    return@withContext Result.failure(Exception("Access token missing in OAuth response ($preview)"))
                 }
             } else {
-                val errBody = response.errorBody()?.string() ?: "HTTP ${response.code()}"
-                return@withContext Result.failure(Exception("Token error (${response.code()}): $errBody"))
+                val rawErrBody = response.errorBody()?.string()?.trim()
+                val parsedMsg = if (!rawErrBody.isNullOrEmpty()) {
+                    parseErrorResponseBody(rawErrBody)
+                } else {
+                    response.message().ifBlank { "HTTP ${response.code()}" }
+                }
+
+                val fullError = "OAuth Token error (HTTP ${response.code()}): $parsedMsg"
+                return@withContext Result.failure(Exception(fullError))
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             e.printStackTrace()
-            return@withContext Result.failure(e)
+            val sw = java.io.StringWriter()
+            e.printStackTrace(java.io.PrintWriter(sw))
+            val stackTraceString = sw.toString()
+            val causeMessage = e.localizedMessage ?: e.message ?: e.toString()
+            val errorMsg = "OAuth token exchange failed (${e.javaClass.name}): $causeMessage\n\nStacktrace:\n$stackTraceString"
+            return@withContext Result.failure(Exception(errorMsg, e))
         }
     }
 
@@ -194,6 +244,60 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
     }
 
     companion object {
+        fun parseTokenResponseBody(rawBody: String): String? {
+            return try {
+                val jsonElement = com.google.gson.JsonParser.parseString(rawBody)
+                if (jsonElement != null && jsonElement.isJsonObject) {
+                    jsonElement.asJsonObject.get("access_token").toSafeString()
+                } else {
+                    null
+                }
+            } catch (t: Throwable) {
+                null
+            }
+        }
+
+        fun parseRegistrationResponseBody(rawBody: String): Pair<String?, String?> {
+            return try {
+                val jsonElement = com.google.gson.JsonParser.parseString(rawBody)
+                if (jsonElement != null && jsonElement.isJsonObject) {
+                    val obj = jsonElement.asJsonObject
+                    val clientId = obj.get("client_id").toSafeString()
+                    val clientSecret = obj.get("client_secret").toSafeString()
+                    Pair(clientId, clientSecret)
+                } else {
+                    Pair(null, null)
+                }
+            } catch (t: Throwable) {
+                Pair(null, null)
+            }
+        }
+
+        fun parseErrorResponseBody(rawErrBody: String): String {
+            return try {
+                val jsonElement = com.google.gson.JsonParser.parseString(rawErrBody)
+                if (jsonElement != null && jsonElement.isJsonObject) {
+                    val jsonObject = jsonElement.asJsonObject
+
+                    val errorVal = jsonObject.get("error").toSafeString()
+                    val descVal = jsonObject.get("error_description").toSafeString()
+                    val msgVal = jsonObject.get("message").toSafeString()
+
+                    when {
+                        !errorVal.isNullOrBlank() && !descVal.isNullOrBlank() -> "$errorVal: $descVal"
+                        !descVal.isNullOrBlank() -> descVal
+                        !errorVal.isNullOrBlank() -> errorVal
+                        !msgVal.isNullOrBlank() -> msgVal
+                        else -> rawErrBody
+                    }
+                } else {
+                    rawErrBody
+                }
+            } catch (t: Throwable) {
+                rawErrBody
+            }
+        }
+
         fun extractTopTagsFromStatuses(statuses: List<StatusItem>, topCount: Int = 20): List<String> {
             val tagCounts = mutableMapOf<String, Int>()
 

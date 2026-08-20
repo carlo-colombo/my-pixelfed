@@ -36,7 +36,7 @@ interface PixelfedApi {
         @Field("redirect_uris") redirectUris: String,
         @Field("scopes") scopes: String,
         @Field("website") website: String
-    ): Response<RegisterAppResponse>
+    ): Response<okhttp3.ResponseBody>
 
     @FormUrlEncoded
     @POST("oauth/token")
@@ -47,7 +47,7 @@ interface PixelfedApi {
         @Field("grant_type") grantType: String = "authorization_code",
         @Field("code") code: String,
         @Field("scope") scope: String
-    ): Response<TokenResponse>
+    ): Response<okhttp3.ResponseBody>
 
     @Multipart
     @POST("api/v1/media")
@@ -66,22 +66,31 @@ interface PixelfedApi {
     ): Response<StatusResponse>
 }
 
+fun JsonElement?.toSafeString(): String? {
+    if (this == null || this.isJsonNull) return null
+    return try {
+        if (this.isJsonPrimitive) {
+            val prim = this.asJsonPrimitive
+            if (prim.isString) prim.asString else prim.toString()
+        } else {
+            this.toString()
+        }
+    } catch (t: Throwable) {
+        try {
+            this.toString()
+        } catch (t2: Throwable) {
+            null
+        }
+    }
+}
+
 data class RegisterAppResponse(
     @SerializedName("id") val id: JsonElement? = null,
     @SerializedName("client_id") val clientId: JsonElement? = null,
     @SerializedName("client_secret") val clientSecret: JsonElement? = null
 ) {
-    fun getClientIdString(): String? = when {
-        clientId == null || clientId.isJsonNull -> null
-        clientId.isJsonPrimitive -> clientId.asString
-        else -> clientId.toString()
-    }
-
-    fun getClientSecretString(): String? = when {
-        clientSecret == null || clientSecret.isJsonNull -> null
-        clientSecret.isJsonPrimitive -> clientSecret.asString
-        else -> clientSecret.toString()
-    }
+    fun getClientIdString(): String? = clientId.toSafeString()
+    fun getClientSecretString(): String? = clientSecret.toSafeString()
 }
 
 data class TokenResponse(
@@ -90,11 +99,7 @@ data class TokenResponse(
     @SerializedName("scope") val scope: JsonElement? = null,
     @SerializedName("created_at") val createdAt: JsonElement? = null
 ) {
-    fun getAccessTokenString(): String? = when {
-        accessToken == null || accessToken.isJsonNull -> null
-        accessToken.isJsonPrimitive -> accessToken.asString
-        else -> accessToken.toString()
-    }
+    fun getAccessTokenString(): String? = accessToken.toSafeString()
 }
 
 data class MediaResponse(
@@ -103,21 +108,13 @@ data class MediaResponse(
     @SerializedName("url") val url: JsonElement? = null,
     @SerializedName("preview_url") val previewUrl: JsonElement? = null
 ) {
-    fun getIdString(): String? = when {
-        id == null || id.isJsonNull -> null
-        id.isJsonPrimitive -> id.asString
-        else -> id.toString()
-    }
+    fun getIdString(): String? = id.toSafeString()
 }
 
 data class AccountResponse(
     @SerializedName("id") val id: JsonElement? = null
 ) {
-    fun getIdString(): String? = when {
-        id == null || id.isJsonNull -> null
-        id.isJsonPrimitive -> id.asString
-        else -> id.toString()
-    }
+    fun getIdString(): String? = id.toSafeString()
 }
 
 data class TagItem(
@@ -134,9 +131,5 @@ data class StatusResponse(
     @SerializedName("id") val id: JsonElement? = null,
     @SerializedName("url") val url: JsonElement? = null
 ) {
-    fun getIdString(): String? = when {
-        id == null || id.isJsonNull -> null
-        id.isJsonPrimitive -> id.asString
-        else -> id.toString()
-    }
+    fun getIdString(): String? = id.toSafeString()
 }

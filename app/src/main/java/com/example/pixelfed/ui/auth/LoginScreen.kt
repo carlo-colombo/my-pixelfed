@@ -5,6 +5,9 @@ import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,7 +21,8 @@ import kotlinx.coroutines.launch
 fun LoginScreen(
     context: Context,
     tokenManager: TokenManager,
-    repository: PixelfedRepository
+    repository: PixelfedRepository,
+    initialErrorMessage: String? = null
 ) {
     var instanceUrl by remember { mutableStateOf("https://pixelfed.social") }
     var manualClientId by remember { mutableStateOf("") }
@@ -26,7 +30,13 @@ fun LoginScreen(
     var showManualCredentials by remember { mutableStateOf(false) }
 
     var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(initialErrorMessage) }
+
+    LaunchedEffect(initialErrorMessage) {
+        if (!initialErrorMessage.isNullOrBlank()) {
+            errorMessage = initialErrorMessage
+        }
+    }
     val scope = rememberCoroutineScope()
 
     val redirectUri = "pixelfed-app://oauth"
@@ -90,11 +100,20 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         if (errorMessage != null) {
-            Text(
-                text = errorMessage!!,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 200.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = errorMessage!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
         }
 
@@ -123,7 +142,17 @@ fun LoginScreen(
                         clientIdToUse = manualClientId.trim()
                     } else {
                         val result = repository.registerApp(formattedUrl, redirectUri)
-                        clientIdToUse = result?.first
+                        if (result.isSuccess) {
+                            clientIdToUse = result.getOrNull()?.first
+                        } else {
+                            clientIdToUse = null
+                            val detail = result.exceptionOrNull()?.message
+                            errorMessage = if (!detail.isNullOrBlank()) {
+                                detail
+                            } else {
+                                "Failed to register app dynamically on instance. Try entering Client ID & Secret manually under Advanced options."
+                            }
+                        }
                     }
 
                     isLoading = false
@@ -140,8 +169,6 @@ fun LoginScreen(
 
                         val customTabsIntent = CustomTabsIntent.Builder().build()
                         customTabsIntent.launchUrl(context, authUrl)
-                    } else {
-                        errorMessage = "Failed to register app dynamically on instance. Try entering Client ID & Secret manually under Advanced options."
                     }
                 }
             },

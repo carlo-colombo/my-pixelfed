@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
 
     private var isAuthProcessing = mutableStateOf(false)
     private var isLoggedInState = mutableStateOf(false)
+    private var oauthErrorMessageState = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,13 +59,15 @@ class MainActivity : ComponentActivity() {
                             onLogout = {
                                 tokenManager.clear()
                                 isLoggedInState.value = false
+                                oauthErrorMessageState.value = null
                             }
                         )
                     } else {
                         LoginScreen(
                             context = this,
                             tokenManager = tokenManager,
-                            repository = repository
+                            repository = repository,
+                            initialErrorMessage = oauthErrorMessageState.value
                         )
                     }
                 }
@@ -84,13 +87,16 @@ class MainActivity : ComponentActivity() {
             val error = uri.getQueryParameter("error")
             val errorDescription = uri.getQueryParameter("error_description")
             if (error != null) {
-                Toast.makeText(this, "OAuth Error: ${errorDescription ?: error}", Toast.LENGTH_LONG).show()
+                val oauthErrText = "OAuth Authorize Error: ${errorDescription ?: error}"
+                oauthErrorMessageState.value = oauthErrText
+                Toast.makeText(this, oauthErrText, Toast.LENGTH_LONG).show()
                 return
             }
 
             val code = uri.getQueryParameter("code")
             if (code != null) {
                 isAuthProcessing.value = true
+                oauthErrorMessageState.value = null
                 CoroutineScope(Dispatchers.Main).launch {
                     val result = repository.exchangeCodeForToken(code, "pixelfed-app://oauth")
                     isAuthProcessing.value = false
@@ -100,7 +106,9 @@ class MainActivity : ComponentActivity() {
                             Toast.makeText(this@MainActivity, "Logged in successfully!", Toast.LENGTH_SHORT).show()
                         },
                         onFailure = { ex ->
-                            Toast.makeText(this@MainActivity, "OAuth Failed: ${ex.message}", Toast.LENGTH_LONG).show()
+                            val msg = ex.localizedMessage ?: ex.message ?: ex.toString()
+                            oauthErrorMessageState.value = "OAuth Token Exchange Failed:\n$msg"
+                            Toast.makeText(this@MainActivity, "OAuth Failed: $msg", Toast.LENGTH_LONG).show()
                         }
                     )
                 }
