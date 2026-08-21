@@ -237,7 +237,10 @@ fun UploadScreen(
                                         modifier = Modifier.padding(8.dp)
                                     ) {
                                         val statusId = status.id?.toSafeString() ?: "Unknown ID"
-                                        val contentText = status.content?.ifBlank { "[No text content]" } ?: "[No text content]"
+                                        val contentText = status.content
+                                        val textVal = status.text
+                                        val descVal = status.description
+                                        val spoilerVal = status.spoilerText
                                         val tagsList = status.tags?.mapNotNull { it.name }?.filter { it.isNotBlank() } ?: emptyList()
 
                                         Text(
@@ -245,11 +248,37 @@ fun UploadScreen(
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary
                                         )
-                                        Text(
-                                            text = contentText,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            maxLines = 3
-                                        )
+                                        if (!contentText.isNullOrBlank()) {
+                                            Text(
+                                                text = "Content: $contentText",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        if (!textVal.isNullOrBlank()) {
+                                            Text(
+                                                text = "Text: $textVal",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        if (!descVal.isNullOrBlank()) {
+                                            Text(
+                                                text = "Description: $descVal",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        if (!spoilerVal.isNullOrBlank()) {
+                                            Text(
+                                                text = "Spoiler: $spoilerVal",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        if (contentText.isNullOrBlank() && textVal.isNullOrBlank() && descVal.isNullOrBlank() && spoilerVal.isNullOrBlank()) {
+                                            Text(
+                                                text = "[No text / description]",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                         if (tagsList.isNotEmpty()) {
                                             Text(
                                                 text = "Tags: ${tagsList.joinToString { "#$it" }}",

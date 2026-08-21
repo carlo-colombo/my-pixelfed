@@ -253,6 +253,9 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
 
             val statuses = statusesResponse.body()!!
             Log.d(TAG, "getUserTopTagsAndPosts: Retrieved ${statuses.size} statuses for userId=$userId")
+            statuses.forEachIndexed { index, status ->
+                Log.d(TAG, "Status[$index]: id=${status.id?.toSafeString()}, tags=${status.tags?.map { it.name }}, content=${status.content}, text=${status.text}, description=${status.description}, spoilerText=${status.spoilerText}")
+            }
 
             val topTags = extractTopTagsFromStatuses(statuses, topCount = 20)
             Log.d(TAG, "getUserTopTagsAndPosts: Extracted ${topTags.size} top tags from ${statuses.size} statuses: $topTags")
@@ -341,11 +344,11 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                     }
                 }
 
-                // 2. Fallback / supplementary hashtag parsing from content HTML or text
-                val content = status.content
-                if (!content.isNullOrEmpty()) {
+                // 2. Fallback / supplementary hashtag parsing from content, text, description, spoilerText
+                val combinedText = listOfNotNull(status.content, status.text, status.description, status.spoilerText).joinToString(" ")
+                if (combinedText.isNotEmpty()) {
                     val hashtagRegex = Regex("""#(\w+)""")
-                    hashtagRegex.findAll(content).forEach { matchResult ->
+                    hashtagRegex.findAll(combinedText).forEach { matchResult ->
                         val tag = matchResult.groupValues[1].lowercase()
                         if (tag.isNotEmpty()) {
                             seenInStatus.add(tag)
