@@ -26,7 +26,7 @@ interface PixelfedApi {
     suspend fun getUserStatuses(
         @Header("Authorization") authHeader: String,
         @Path("id") accountId: String,
-        @Query("limit") limit: Int = 100
+        @Query("limit") limit: Int = 20
     ): Response<List<StatusItem>>
 
     @FormUrlEncoded

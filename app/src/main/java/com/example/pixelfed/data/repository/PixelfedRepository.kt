@@ -244,7 +244,7 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
 
             Log.d(TAG, "getUserTopTagsAndPosts: Verified user credentials, userId=$userId. Fetching statuses...")
 
-            val statusesResponse = api.getUserStatuses(authHeader, userId, limit = 100)
+            val statusesResponse = api.getUserStatuses(authHeader, userId, limit = 20)
             if (!statusesResponse.isSuccessful || statusesResponse.body() == null) {
                 val err = "Failed to fetch user statuses (HTTP ${statusesResponse.code()}): ${statusesResponse.errorBody()?.string()}"
                 Log.e(TAG, "getUserTopTagsAndPosts: $err")
