@@ -3,7 +3,6 @@ package com.example.pixelfed.data.repository
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import com.example.pixelfed.R
 import com.example.pixelfed.data.api.PixelfedApi
 import com.example.pixelfed.data.api.StatusResponse
 import com.example.pixelfed.data.api.StatusItem
@@ -220,8 +219,21 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
     )
 
     fun getDefaultStaticTags(): List<String> {
-        val carloPostsText = context.getString(R.string.carlo_posts_text)
-        return extractTagsFromPostsText(carloPostsText)
+        val jsonString = try {
+            context.assets.open("pixelfed-statuses.json").bufferedReader().use { it.readText() }
+        } catch (e: Exception) {
+            Log.e(TAG, "getDefaultStaticTags: Failed to read pixelfed-statuses.json from assets", e)
+            return emptyList()
+        }
+
+        return try {
+            val listType = object : TypeToken<List<StatusItem>>() {}.type
+            val statuses: List<StatusItem> = Gson().fromJson(jsonString, listType) ?: emptyList()
+            extractTopTagsFromStatuses(statuses, topCount = Int.MAX_VALUE)
+        } catch (e: Exception) {
+            Log.e(TAG, "getDefaultStaticTags: Failed to parse pixelfed-statuses.json", e)
+            emptyList()
+        }
     }
 
     suspend fun getUserTopTagsAndPosts(forceRefresh: Boolean = false): Result<TagsAndPosts> = withContext(Dispatchers.IO) {
