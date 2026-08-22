@@ -229,8 +229,9 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 try {
                     val listType = object : TypeToken<List<String>>() {}.type
                     val cachedList: List<String> = Gson().fromJson(cachedJson, listType)
-                    Log.d(TAG, "getUserTopTagsAndPosts: returning ${cachedList.size} cached tags")
-                    return@withContext Result.success(TagsAndPosts(topTags = cachedList, statuses = emptyList()))
+                    val effectiveCached = if (!cachedList.isNullOrEmpty()) cachedList else DEFAULT_STATIC_TAGS
+                    Log.d(TAG, "getUserTopTagsAndPosts: returning ${effectiveCached.size} cached tags")
+                    return@withContext Result.success(TagsAndPosts(topTags = effectiveCached, statuses = emptyList()))
                 } catch (e: Exception) {
                     Log.w(TAG, "getUserTopTagsAndPosts: failed to parse cached tags JSON", e)
                 }
@@ -295,6 +296,8 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
 
     companion object {
         private const val TAG = "PixelfedRepository"
+        val DEFAULT_STATIC_TAGS = listOf("photography", "pixelfed", "photooftheday", "art", "nature")
+
         fun parseTokenResponseBody(rawBody: String): String? {
             return try {
                 val jsonElement = com.google.gson.JsonParser.parseString(rawBody)
@@ -356,14 +359,21 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
         ): List<String> {
             val tagCounts = mutableMapOf<String, Int>()
 
+            val sanitizedStaticParam = staticTags.mapNotNull { tag ->
+                val s = tag.trim().removePrefix("#").lowercase()
+                if (s.isNotEmpty()) s else null
+            }.distinct()
+
+            val defaultStaticSanitized = DEFAULT_STATIC_TAGS.mapNotNull { tag ->
+                val s = tag.trim().removePrefix("#").lowercase()
+                if (s.isNotEmpty()) s else null
+            }.distinct()
+
             for (status in statuses) {
                 // 1. Static tags (passed staticTags parameter + static tags array provided in status by API)
                 val staticInStatus = mutableListOf<String>()
-                staticTags.forEach { tag ->
-                    val sanitized = tag.trim().removePrefix("#")
-                    if (sanitized.isNotEmpty()) {
-                        staticInStatus.add(sanitized.lowercase())
-                    }
+                sanitizedStaticParam.forEach { tag ->
+                    staticInStatus.add(tag)
                 }
                 status.tags?.forEach { tag ->
                     val tagName = tag.name?.trim()?.removePrefix("#")
@@ -394,10 +404,19 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 }
             }
 
-            return tagCounts.entries
+            val sortedFromStatuses = tagCounts.entries
                 .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
-                .take(topCount)
                 .map { it.key }
+
+            val effectiveStaticTags = if (sanitizedStaticParam.isNotEmpty()) {
+                sanitizedStaticParam
+            } else {
+                defaultStaticSanitized
+            }
+
+            val combinedList = (sortedFromStatuses + effectiveStaticTags).distinct()
+
+            return combinedList.take(topCount)
         }
     }
 

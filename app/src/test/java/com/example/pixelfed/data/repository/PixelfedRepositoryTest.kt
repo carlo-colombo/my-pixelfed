@@ -51,8 +51,31 @@ class PixelfedRepositoryTest {
 
         val topTags = PixelfedRepository.extractTopTagsFromStatuses(statuses, topCount = 20)
 
-        assertEquals(1, topTags.size)
         assertEquals("nature", topTags[0])
+        assert(topTags.containsAll(PixelfedRepository.DEFAULT_STATIC_TAGS))
+    }
+
+    @Test
+    fun testExtractTopTagsFromStatuses_returnsStaticTagsWhenStatusesEmpty() {
+        val statuses = emptyList<StatusItem>()
+
+        val topTags = PixelfedRepository.extractTopTagsFromStatuses(statuses, topCount = 20)
+
+        assertEquals(PixelfedRepository.DEFAULT_STATIC_TAGS.size, topTags.size)
+        assertEquals(PixelfedRepository.DEFAULT_STATIC_TAGS, topTags)
+    }
+
+    @Test
+    fun testExtractTopTagsFromStatuses_alwaysIncludesStaticTags() {
+        val statuses = listOf(
+            StatusItem(content = "Sunset at the beach #sunset #beach")
+        )
+
+        val topTags = PixelfedRepository.extractTopTagsFromStatuses(statuses, topCount = 20)
+
+        assert(topTags.contains("sunset"))
+        assert(topTags.contains("beach"))
+        assert(topTags.containsAll(PixelfedRepository.DEFAULT_STATIC_TAGS))
     }
 
     @Test
