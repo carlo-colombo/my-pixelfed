@@ -113,4 +113,63 @@ class PixelfedRepositoryTest {
         val html = "<html><body>500 Internal Server Error</body></html>"
         assertEquals(html, PixelfedRepository.parseErrorResponseBody(html))
     }
+
+    @Test
+    fun testPhotoListShiftingAndFocusIndex() {
+        // Simulating the list operations in UploadScreen
+        val list = mutableListOf("photo1", "photo2", "photo3", "photo4")
+
+        // Shift index 2 ("photo3") left -> new list should be ["photo1", "photo3", "photo2", "photo4"]
+        // Focus should follow "photo3" to index 1
+        var focusedIndex = 2
+        val itemToKeepInFocus = list[focusedIndex]
+
+        val temp = list[focusedIndex]
+        list[focusedIndex] = list[focusedIndex - 1]
+        list[focusedIndex - 1] = temp
+        focusedIndex -= 1
+
+        assertEquals(listOf("photo1", "photo3", "photo2", "photo4"), list)
+        assertEquals("photo3", list[focusedIndex])
+        assertEquals("photo3", itemToKeepInFocus)
+
+        // Shift index 1 ("photo3") right -> new list should be ["photo1", "photo2", "photo3", "photo4"]
+        // Focus should follow "photo3" to index 2
+        val tempRight = list[focusedIndex]
+        list[focusedIndex] = list[focusedIndex + 1]
+        list[focusedIndex + 1] = tempRight
+        focusedIndex += 1
+
+        assertEquals(listOf("photo1", "photo2", "photo3", "photo4"), list)
+        assertEquals("photo3", list[focusedIndex])
+    }
+
+    @Test
+    fun testPhotoListRemovalAndFocusAdjustment() {
+        val list = mutableListOf("photo1", "photo2", "photo3")
+        var focusedIndex = 2 // focus on photo3
+
+        // Remove photo3 (last element)
+        list.removeAt(focusedIndex)
+        focusedIndex = when {
+            list.isEmpty() -> 0
+            focusedIndex >= list.size -> list.size - 1
+            else -> focusedIndex
+        }
+
+        assertEquals(listOf("photo1", "photo2"), list)
+        assertEquals(1, focusedIndex)
+        assertEquals("photo2", list[focusedIndex])
+    }
+
+    @Test
+    fun testPhotoSelectionLimitUpTo6() {
+        val existing = listOf("photo1", "photo2", "photo3", "photo4")
+        val newlySelected = listOf("photo5", "photo6", "photo7", "photo8")
+
+        val combined = (existing + newlySelected).take(6)
+
+        assertEquals(6, combined.size)
+        assertEquals(listOf("photo1", "photo2", "photo3", "photo4", "photo5", "photo6"), combined)
+    }
 }
