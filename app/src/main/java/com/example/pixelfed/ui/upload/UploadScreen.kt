@@ -4,17 +4,27 @@ import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,7 +33,9 @@ import com.example.pixelfed.data.api.toSafeString
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
@@ -36,14 +48,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun UploadScreen(
     repository: PixelfedRepository,
     onLogout: () -> Unit
 ) {
     val context = LocalContext.current
-    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedImageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var captionState by remember { mutableStateOf(TextFieldValue("")) }
     var resizeTo8Mb by remember { mutableStateOf(false) }
     var isUploading by remember { mutableStateOf(false) }
@@ -59,6 +71,14 @@ fun UploadScreen(
     var isCalculatingResized by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
+
+    val maxPhotos = 6
+    val pagerState = rememberPagerState(
+        initialPage = 0,
+        pageCount = { selectedImageUris.size }
+    )
+
+    val currentFocusedUri = selectedImageUris.getOrNull(pagerState.currentPage)
 
     fun fetchTags(forceRefresh: Boolean = false) {
         scope.launch {
@@ -100,8 +120,8 @@ fun UploadScreen(
         )
     }
 
-    LaunchedEffect(selectedImageUri) {
-        val uri = selectedImageUri
+    LaunchedEffect(currentFocusedUri) {
+        val uri = currentFocusedUri
         if (uri != null) {
             originalMetadata = withContext(Dispatchers.IO) {
                 ImageUtils.getImageMetadata(context, uri)
@@ -112,8 +132,8 @@ fun UploadScreen(
         }
     }
 
-    LaunchedEffect(selectedImageUri, resizeTo8Mb, originalMetadata) {
-        val uri = selectedImageUri
+    LaunchedEffect(currentFocusedUri, resizeTo8Mb, originalMetadata) {
+        val uri = currentFocusedUri
         val meta = originalMetadata
         if (uri != null && resizeTo8Mb && meta != null && meta.sizeBytes > ImageUtils.MAX_BYTES_8MB) {
             isCalculatingResized = true
@@ -133,11 +153,57 @@ fun UploadScreen(
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            selectedImageUri = uri
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            val combined = (selectedImageUris + uris).take(maxPhotos)
+            selectedImageUris = combined
             statusMessage = null
+        }
+    }
+
+    fun removeImageAt(index: Int) {
+        if (index in selectedImageUris.indices) {
+            val newList = selectedImageUris.toMutableList()
+            newList.removeAt(index)
+            selectedImageUris = newList
+
+            scope.launch {
+                val newTarget = when {
+                    newList.isEmpty() -> 0
+                    index >= newList.size -> newList.size - 1
+                    else -> index
+                }
+                if (newList.isNotEmpty()) {
+                    pagerState.scrollToPage(newTarget)
+                }
+            }
+        }
+    }
+
+    fun shiftLeft(index: Int) {
+        if (index > 0 && index < selectedImageUris.size) {
+            val newList = selectedImageUris.toMutableList()
+            val temp = newList[index]
+            newList[index] = newList[index - 1]
+            newList[index - 1] = temp
+            selectedImageUris = newList
+            scope.launch {
+                pagerState.scrollToPage(index - 1)
+            }
+        }
+    }
+
+    fun shiftRight(index: Int) {
+        if (index >= 0 && index < selectedImageUris.size - 1) {
+            val newList = selectedImageUris.toMutableList()
+            val temp = newList[index]
+            newList[index] = newList[index + 1]
+            newList[index + 1] = temp
+            selectedImageUris = newList
+            scope.launch {
+                pagerState.scrollToPage(index + 1)
+            }
         }
     }
 
@@ -165,28 +231,158 @@ fun UploadScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(250.dp)
+                    .height(260.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                if (selectedImageUri != null) {
-                    Image(
-                        painter = rememberAsyncImagePainter(selectedImageUri),
-                        contentDescription = "Selected Photo",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+                if (selectedImageUris.isNotEmpty()) {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize()
+                    ) { page ->
+                        Image(
+                            painter = rememberAsyncImagePainter(selectedImageUris[page]),
+                            contentDescription = "Selected Photo ${page + 1}",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+
+                    if (selectedImageUris.size > 1) {
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(8.dp)
+                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            repeat(selectedImageUris.size) { page ->
+                                val color = if (pagerState.currentPage == page) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(color)
+                                )
+                            }
+                        }
+                    }
                 } else {
                     Text(
-                        text = "No image selected",
+                        text = "No images selected",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (selectedImageUris.isNotEmpty()) {
+                val currentIndex = pagerState.currentPage
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = { shiftLeft(currentIndex) },
+                        enabled = currentIndex > 0
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Shift Left"
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Shift Left")
+                    }
+
+                    OutlinedButton(
+                        onClick = { removeImageAt(currentIndex) },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Remove Photo"
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Remove")
+                    }
+
+                    OutlinedButton(
+                        onClick = { shiftRight(currentIndex) },
+                        enabled = currentIndex < selectedImageUris.size - 1
+                    ) {
+                        Text("Shift Right")
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Shift Right"
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
+                val thumbnailSize = screenWidthDp * 0.15f
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Upload Order Preview (${selectedImageUris.size}/$maxPhotos)",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        itemsIndexed(selectedImageUris) { index, uri ->
+                            val isFocused = index == pagerState.currentPage
+                            Box(
+                                modifier = Modifier
+                                    .size(thumbnailSize)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(
+                                        width = if (isFocused) 3.dp else 1.dp,
+                                        color = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable {
+                                        scope.launch {
+                                            pagerState.scrollToPage(index)
+                                        }
+                                    }
+                            ) {
+                                Image(
+                                    painter = rememberAsyncImagePainter(uri),
+                                    contentDescription = "Thumbnail ${index + 1}",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(bottomEnd = 6.dp))
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "${index + 1}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             // Scrollable Window for Recent Fetched Posts
             Column(
@@ -294,8 +490,7 @@ fun UploadScreen(
                 }
             }
 
-            if (selectedImageUri != null && originalMetadata != null) {
-                Spacer(modifier = Modifier.height(12.dp))
+            if (selectedImageUris.isNotEmpty() && originalMetadata != null) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -304,6 +499,11 @@ fun UploadScreen(
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         val meta = originalMetadata!!
+                        Text(
+                            text = "Photo ${pagerState.currentPage + 1} of ${selectedImageUris.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                         if (resizeTo8Mb && meta.sizeBytes > ImageUtils.MAX_BYTES_8MB) {
                             Text(
                                 text = "Original: ${meta.formatFileSize()} (${meta.formatDimensions()})",
@@ -333,9 +533,8 @@ fun UploadScreen(
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(12.dp))
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier
@@ -360,9 +559,16 @@ fun UploadScreen(
 
             Button(
                 onClick = { galleryLauncher.launch("image/*") },
+                enabled = selectedImageUris.size < maxPhotos,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (selectedImageUri == null) "Select Photo from Gallery" else "Change Photo")
+                Text(
+                    when {
+                        selectedImageUris.isEmpty() -> "Select Photos from Gallery (up to 6)"
+                        selectedImageUris.size < maxPhotos -> "Add More Photos (${selectedImageUris.size}/$maxPhotos)"
+                        else -> "Maximum Photos Reached (6/6)"
+                    }
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -447,8 +653,8 @@ fun UploadScreen(
 
             Button(
                 onClick = {
-                    if (selectedImageUri == null) {
-                        statusMessage = "Please select an image first"
+                    if (selectedImageUris.isEmpty()) {
+                        statusMessage = "Please select at least one photo"
                         isError = true
                         return@Button
                     }
@@ -458,17 +664,17 @@ fun UploadScreen(
                     isError = false
 
                     scope.launch {
-                        val result = repository.uploadPhotoAndCreateStatus(
-                            imageUri = selectedImageUri!!,
+                        val result = repository.uploadPhotosAndCreateStatus(
+                            imageUris = selectedImageUris,
                             caption = captionState.text,
                             resizeTo8Mb = resizeTo8Mb
                         )
                         isUploading = false
                         result.fold(
                             onSuccess = {
-                                statusMessage = "Successfully uploaded photo to Pixelfed!"
+                                statusMessage = "Successfully uploaded ${selectedImageUris.size} photo(s) to Pixelfed!"
                                 isError = false
-                                selectedImageUri = null
+                                selectedImageUris = emptyList()
                                 captionState = TextFieldValue("")
                             },
                             onFailure = { ex ->
@@ -478,7 +684,7 @@ fun UploadScreen(
                         )
                     }
                 },
-                enabled = !isUploading && selectedImageUri != null,
+                enabled = !isUploading && selectedImageUris.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isUploading) {
@@ -487,7 +693,7 @@ fun UploadScreen(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                 } else {
-                    Text("Upload Photo")
+                    Text(if (selectedImageUris.size > 1) "Upload ${selectedImageUris.size} Photos" else "Upload Photo")
                 }
             }
         }

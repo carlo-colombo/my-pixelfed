@@ -150,38 +150,57 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
         imageUri: Uri,
         caption: String,
         resizeTo8Mb: Boolean = false
+    ): Result<StatusResponse> {
+        return uploadPhotosAndCreateStatus(listOf(imageUri), caption, resizeTo8Mb)
+    }
+
+    suspend fun uploadPhotosAndCreateStatus(
+        imageUris: List<Uri>,
+        caption: String,
+        resizeTo8Mb: Boolean = false
     ): Result<StatusResponse> = withContext(Dispatchers.IO) {
+        if (imageUris.isEmpty()) {
+            return@withContext Result.failure(Exception("No images selected for upload"))
+        }
+
         try {
             val instanceUrl = tokenManager.instanceUrl ?: return@withContext Result.failure(Exception("Not logged in"))
             val accessToken = tokenManager.accessToken ?: return@withContext Result.failure(Exception("Not logged in"))
 
             val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
-            val file = if (resizeTo8Mb) {
-                ImageUtils.resizeImageDownToMaxBytes(context, imageUri, ImageUtils.MAX_BYTES_8MB)
-            } else {
-                getFileFromUri(imageUri)
-            } ?: return@withContext Result.failure(Exception("Unable to process image file"))
+            val mediaIds = mutableListOf<String>()
 
-            val requestFile = file.asRequestBody("image/*".toMediaTypeOrNull())
-            val multipartBody = MultipartBody.Part.createFormData("file", file.name, requestFile)
-            val descRequestBody = caption.toRequestBody("text/plain".toMediaTypeOrNull())
+            for (uri in imageUris) {
+                val file = if (resizeTo8Mb) {
+                    ImageUtils.resizeImageDownToMaxBytes(context, uri, ImageUtils.MAX_BYTES_8MB)
+                } else {
+                    getFileFromUri(uri)
+                } ?: return@withContext Result.failure(Exception("Unable to process image file"))
 
-            val mediaResponse = api.uploadMedia(
-                authHeader = "Bearer $accessToken",
-                file = multipartBody,
-                description = descRequestBody
-            )
+                val requestFile = file.asRequestBody("image/*".toMediaTypeOrNull())
+                val multipartBody = MultipartBody.Part.createFormData("file", file.name, requestFile)
+                val descRequestBody = caption.toRequestBody("text/plain".toMediaTypeOrNull())
 
-            if (!mediaResponse.isSuccessful || mediaResponse.body() == null) {
-                return@withContext Result.failure(Exception("Media upload failed: ${mediaResponse.code()} ${mediaResponse.errorBody()?.string()}"))
+                val mediaResponse = api.uploadMedia(
+                    authHeader = "Bearer $accessToken",
+                    file = multipartBody,
+                    description = descRequestBody
+                )
+
+                if (!mediaResponse.isSuccessful || mediaResponse.body() == null) {
+                    return@withContext Result.failure(Exception("Media upload failed: ${mediaResponse.code()} ${mediaResponse.errorBody()?.string()}"))
+                }
+
+                val mediaId = mediaResponse.body()!!.getIdString()
+                    ?: return@withContext Result.failure(Exception("Media upload response missing ID"))
+
+                mediaIds.add(mediaId)
             }
-
-            val mediaId = mediaResponse.body()!!.getIdString() ?: return@withContext Result.failure(Exception("Media upload response missing ID"))
 
             val statusResponse = api.createStatus(
                 authHeader = "Bearer $accessToken",
                 status = caption,
-                mediaIds = listOf(mediaId)
+                mediaIds = mediaIds
             )
 
             if (statusResponse.isSuccessful && statusResponse.body() != null) {
