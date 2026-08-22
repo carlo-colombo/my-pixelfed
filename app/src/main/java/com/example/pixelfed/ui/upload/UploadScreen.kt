@@ -62,7 +62,7 @@ fun UploadScreen(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
 
-    var topTags by remember { mutableStateOf<List<String>>(PixelfedRepository.DEFAULT_STATIC_TAGS) }
+    var topTags by remember { mutableStateOf<List<String>>(repository.getDefaultStaticTags()) }
     var recentStatuses by remember { mutableStateOf<List<StatusItem>>(emptyList()) }
     var isLoadingTags by remember { mutableStateOf(false) }
 
@@ -87,7 +87,7 @@ fun UploadScreen(
             result.fold(
                 onSuccess = { data ->
                     Log.d("UploadScreen", "fetchTags success: loaded ${data.topTags.size} tags and ${data.statuses.size} statuses")
-                    topTags = if (data.topTags.isNotEmpty()) data.topTags else PixelfedRepository.DEFAULT_STATIC_TAGS
+                    topTags = if (data.topTags.isNotEmpty()) data.topTags else repository.getDefaultStaticTags()
                     if (data.statuses.isNotEmpty()) {
                         recentStatuses = data.statuses
                     }
@@ -95,7 +95,7 @@ fun UploadScreen(
                 onFailure = { ex ->
                     Log.e("UploadScreen", "fetchTags failure: ${ex.message}", ex)
                     if (topTags.isEmpty()) {
-                        topTags = PixelfedRepository.DEFAULT_STATIC_TAGS
+                        topTags = repository.getDefaultStaticTags()
                     }
                 }
             )
