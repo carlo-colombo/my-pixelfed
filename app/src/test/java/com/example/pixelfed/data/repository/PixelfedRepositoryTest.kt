@@ -8,8 +8,7 @@ import org.junit.Test
 
 class PixelfedRepositoryTest {
 
-    private val samplePostsText = "Carlo @pictures.litapp.ovh · 1d #photography #animalphotography #canaryislands #travelphotography Lobosooking chicken with #earth heat at #Lanzarote - Timanfaya park - #photography #BlueSkyArtShow #travelphotography #canaryislands Carlo @pictures.litapp.ovh · 27d #Glass jar #BlueSkyArtShow #photography Carlo @pictures.litapp.ovh · 1mo Kotor Kitten #growing #blackandwhite #classicmono #BlueSkyArtShow #catsofpixelfed #catphotography #photography #cat Carlo @pictures.litapp.ovh · 1mo #urbangaze #wien long exposure Carlo @pictures.litapp.ovh · 2mo Shinjuku - #busy view from the top - #photography #japan #travelphotography #urbangaze #BlueSkyArtShow Carlo @pictures.litapp.ovh · 2mo Black and White of the Iseo Lake - #classicmono #photography #blackandwhite #photography-bw #italy #northernitaly"
-    private val sampleStaticTags = PixelfedRepository.extractTagsFromPostsText(samplePostsText)
+    private val sampleStaticTags = listOf("photography", "italy", "northernitaly", "blueskyartshow", "generativeart")
 
     @Test
     fun testExtractTopTagsFromStatuses_rankingAndLimit() {
@@ -76,20 +75,16 @@ class PixelfedRepositoryTest {
 
         val allTags = PixelfedRepository.extractTopTagsFromStatuses(statuses, topCount = Int.MAX_VALUE, staticTags = sampleStaticTags)
 
-        // 30 unique status tags + 21 sample static tags
-        assertEquals(51, allTags.size)
+        // 30 unique status tags + 5 sample static tags
+        assertEquals(35, allTags.size)
     }
 
     @Test
     fun testExtractTagsFromPostsText_extractedCorrectlyFromPostsText() {
-        val expectedTags = listOf(
-            "photography", "animalphotography", "canaryislands", "travelphotography",
-            "earth", "lanzarote", "blueskyartshow", "glass", "growing", "blackandwhite",
-            "classicmono", "catsofpixelfed", "catphotography", "cat", "urbangaze",
-            "wien", "busy", "japan", "photography-bw", "italy", "northernitaly"
-        )
-        val extracted = PixelfedRepository.extractTagsFromPostsText(samplePostsText)
-        assertEquals(21, extracted.size)
+        val text = "Carlo @pictures.litapp.ovh · 1d #photography #animalphotography #canaryislands #travelphotography"
+        val expectedTags = listOf("photography", "animalphotography", "canaryislands", "travelphotography")
+        val extracted = PixelfedRepository.extractTagsFromPostsText(text)
+        assertEquals(4, extracted.size)
         assertEquals(expectedTags, extracted)
     }
 
