@@ -277,7 +277,7 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 Log.d(TAG, "Status[$index]: id=${status.id?.toSafeString()}, tags=${status.tags?.map { it.name }}, content=${status.content}, text=${status.text}, description=${status.description}, spoilerText=${status.spoilerText}")
             }
 
-            val topTags = extractTopTagsFromStatuses(statuses, topCount = 20)
+            val topTags = extractTopTagsFromStatuses(statuses, topCount = Int.MAX_VALUE)
             Log.d(TAG, "getUserTopTagsAndPosts: Extracted ${topTags.size} top tags from ${statuses.size} statuses: $topTags")
 
             tokenManager.cachedTagsJson = Gson().toJson(topTags)
@@ -354,7 +354,7 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
 
         fun extractTopTagsFromStatuses(
             statuses: List<StatusItem>,
-            topCount: Int = 20,
+            topCount: Int = Int.MAX_VALUE,
             staticTags: List<String> = emptyList()
         ): List<String> {
             val tagCounts = mutableMapOf<String, Int>()

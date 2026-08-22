@@ -43,6 +43,18 @@ class PixelfedRepositoryTest {
     }
 
     @Test
+    fun testExtractTopTagsFromStatuses_extractsAllWithoutCappingWhenUnbounded() {
+        val statuses = (1..30).map { i ->
+            StatusItem(tags = listOf(TagItem("tag$i")))
+        }
+
+        val allTags = PixelfedRepository.extractTopTagsFromStatuses(statuses, topCount = Int.MAX_VALUE)
+
+        // 30 unique status tags + 5 default static tags
+        assertEquals(35, allTags.size)
+    }
+
+    @Test
     fun testExtractTopTagsFromStatuses_handlesEmptyAndDuplicates() {
         val statuses = listOf(
             StatusItem(tags = listOf(TagItem("  #nature  "), TagItem("NATURE"), TagItem(""))),
