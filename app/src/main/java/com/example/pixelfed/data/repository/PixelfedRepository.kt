@@ -296,7 +296,13 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
 
     companion object {
         private const val TAG = "PixelfedRepository"
-        val DEFAULT_STATIC_TAGS = listOf("photography", "pixelfed", "photooftheday", "art", "nature")
+        val STATIC_POSTS_TEXT = "Carlo @pictures.litapp.ovh · 1d #photography #animalphotography #canaryislands #travelphotography Lobosooking chicken with #earth heat at #Lanzarote - Timanfaya park - #photography #BlueSkyArtShow #travelphotography #canaryislandsCarlo @pictures.litapp.ovh · 27d #Glass jar #BlueSkyArtShow #photographyCarlo @pictures.litapp.ovh · 1mo Kotor Kitten #growing #blackandwhite #classicmono #BlueSkyArtShow #catsofpixelfed #catphotography #photography #catCarlo @pictures.litapp.ovh · 1mo #urbangaze #wien long exposureCarlo @pictures.litapp.ovh · 2mo Shinjuku - #busy view from the top - #photography #japan #travelphotography #urbangaze #BlueSkyArtShowCarlo @pictures.litapp.ovh · 2mo Black and White of the Iseo Lake - #classicmono #photography #blackandwhite #photography-bw #italy #northernitaly"
+
+        val DEFAULT_STATIC_TAGS = Regex("""#([\p{L}\p{N}_-]+)""")
+            .findAll(STATIC_POSTS_TEXT)
+            .map { it.groupValues[1].lowercase() }
+            .distinct()
+            .toList()
 
         fun parseTokenResponseBody(rawBody: String): String? {
             return try {
