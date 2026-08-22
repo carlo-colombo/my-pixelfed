@@ -1,5 +1,6 @@
 package com.example.pixelfed.data.repository
 
+import com.example.pixelfed.data.api.MediaAttachment
 import com.example.pixelfed.data.api.StatusItem
 import com.example.pixelfed.data.api.TagItem
 import org.junit.Assert.assertEquals
@@ -32,6 +33,28 @@ class PixelfedRepositoryTest {
         assertEquals("travelphotography", topTags[2])
         // Check photography-bw with hyphen is extracted
         assert(topTags.contains("photography-bw"))
+    }
+
+    @Test
+    fun testExtractTopTagsFromStatuses_extractsFromMediaAttachmentDescriptions() {
+        val statuses = listOf(
+            StatusItem(
+                content = "No tags in content",
+                mediaAttachments = listOf(
+                    MediaAttachment(description = "Ari, campari #design"),
+                    MediaAttachment(description = "#photography #animalphotography #canaryislands #travelphotography Lobos")
+                )
+            )
+        )
+
+        val topTags = PixelfedRepository.extractTopTagsFromStatuses(statuses, topCount = 10)
+
+        assertEquals(5, topTags.size)
+        assert(topTags.contains("design"))
+        assert(topTags.contains("photography"))
+        assert(topTags.contains("animalphotography"))
+        assert(topTags.contains("canaryislands"))
+        assert(topTags.contains("travelphotography"))
     }
 
     @Test

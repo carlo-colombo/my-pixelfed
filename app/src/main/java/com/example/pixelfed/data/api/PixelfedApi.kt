@@ -121,13 +121,22 @@ data class TagItem(
     @SerializedName("name") val name: String? = null
 )
 
+data class MediaAttachment(
+    @SerializedName("id") val id: JsonElement? = null,
+    @SerializedName("type") val type: String? = null,
+    @SerializedName("url") val url: String? = null,
+    @SerializedName("preview_url") val previewUrl: String? = null,
+    @SerializedName("description") val description: String? = null
+)
+
 data class StatusItem(
     @SerializedName("id") val id: JsonElement? = null,
     @SerializedName("tags") val tags: List<TagItem>? = null,
     @SerializedName("content") val content: String? = null,
     @SerializedName("text") val text: String? = null,
     @SerializedName("description") val description: String? = null,
-    @SerializedName("spoiler_text") val spoilerText: String? = null
+    @SerializedName("spoiler_text") val spoilerText: String? = null,
+    @SerializedName("media_attachments") val mediaAttachments: List<MediaAttachment>? = null
 )
 
 data class StatusResponse(

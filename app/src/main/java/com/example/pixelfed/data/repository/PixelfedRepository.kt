@@ -391,9 +391,11 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                     }
                 }
 
-                // 2. Extracted tags from post text (content, text, description, spoilerText)
+                // 2. Extracted tags from post text (content, text, description, spoilerText) and media attachment descriptions
                 val extractedInStatus = mutableListOf<String>()
-                val combinedText = listOfNotNull(status.content, status.text, status.description, status.spoilerText).joinToString(" ")
+                val mediaDescriptions = status.mediaAttachments?.mapNotNull { it.description } ?: emptyList()
+                val textSources = listOfNotNull(status.content, status.text, status.description, status.spoilerText) + mediaDescriptions
+                val combinedText = textSources.joinToString(" ")
                 if (combinedText.isNotEmpty()) {
                     val hashtagRegex = Regex("""#([\p{L}\p{N}_-]+)""")
                     hashtagRegex.findAll(combinedText).forEach { matchResult ->
