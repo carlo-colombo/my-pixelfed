@@ -26,7 +26,7 @@ interface PixelfedApi {
     suspend fun getUserStatuses(
         @Header("Authorization") authHeader: String,
         @Path("id") accountId: String,
-        @Query("limit") limit: Int = 100
+        @Query("limit") limit: Int = 20
     ): Response<List<StatusItem>>
 
     @FormUrlEncoded
@@ -124,7 +124,10 @@ data class TagItem(
 data class StatusItem(
     @SerializedName("id") val id: JsonElement? = null,
     @SerializedName("tags") val tags: List<TagItem>? = null,
-    @SerializedName("content") val content: String? = null
+    @SerializedName("content") val content: String? = null,
+    @SerializedName("text") val text: String? = null,
+    @SerializedName("description") val description: String? = null,
+    @SerializedName("spoiler_text") val spoilerText: String? = null
 )
 
 data class StatusResponse(

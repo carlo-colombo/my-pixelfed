@@ -2,6 +2,7 @@ package com.example.pixelfed.data.repository
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.example.pixelfed.data.api.PixelfedApi
 import com.example.pixelfed.data.api.StatusResponse
 import com.example.pixelfed.data.api.StatusItem
@@ -193,7 +194,12 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
         }
     }
 
-    suspend fun getUserTopTags(forceRefresh: Boolean = false): Result<List<String>> = withContext(Dispatchers.IO) {
+    data class TagsAndPosts(
+        val topTags: List<String>,
+        val statuses: List<StatusItem>
+    )
+
+    suspend fun getUserTopTagsAndPosts(forceRefresh: Boolean = false): Result<TagsAndPosts> = withContext(Dispatchers.IO) {
         val cacheDurationMs = 12 * 60 * 60 * 1000L
         val currentTime = System.currentTimeMillis()
 
@@ -204,46 +210,72 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 try {
                     val listType = object : TypeToken<List<String>>() {}.type
                     val cachedList: List<String> = Gson().fromJson(cachedJson, listType)
-                    return@withContext Result.success(cachedList)
+                    Log.d(TAG, "getUserTopTagsAndPosts: returning ${cachedList.size} cached tags")
+                    return@withContext Result.success(TagsAndPosts(topTags = cachedList, statuses = emptyList()))
                 } catch (e: Exception) {
-                    // fall back to fetching if JSON parsing fails
+                    Log.w(TAG, "getUserTopTagsAndPosts: failed to parse cached tags JSON", e)
                 }
             }
         }
 
         try {
-            val instanceUrl = tokenManager.instanceUrl ?: return@withContext Result.failure(Exception("Not logged in"))
-            val accessToken = tokenManager.accessToken ?: return@withContext Result.failure(Exception("Not logged in"))
+            val instanceUrl = tokenManager.instanceUrl
+            val accessToken = tokenManager.accessToken
+            if (instanceUrl.isNullOrBlank() || accessToken.isNullOrBlank()) {
+                Log.e(TAG, "getUserTopTagsAndPosts failed: not logged in")
+                return@withContext Result.failure(Exception("Not logged in"))
+            }
 
             val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
             val authHeader = "Bearer $accessToken"
 
             val accountResponse = api.verifyCredentials(authHeader)
             if (!accountResponse.isSuccessful || accountResponse.body() == null) {
-                return@withContext Result.failure(Exception("Failed to verify user credentials"))
+                val err = "Failed to verify credentials (HTTP ${accountResponse.code()}): ${accountResponse.errorBody()?.string()}"
+                Log.e(TAG, "getUserTopTagsAndPosts: $err")
+                return@withContext Result.failure(Exception(err))
             }
 
             val userId = accountResponse.body()!!.getIdString()
-                ?: return@withContext Result.failure(Exception("User ID not found"))
+            if (userId.isNullOrBlank()) {
+                Log.e(TAG, "getUserTopTagsAndPosts: User ID not found in verify_credentials response")
+                return@withContext Result.failure(Exception("User ID not found"))
+            }
 
-            val statusesResponse = api.getUserStatuses(authHeader, userId, limit = 100)
+            Log.d(TAG, "getUserTopTagsAndPosts: Verified user credentials, userId=$userId. Fetching statuses...")
+
+            val statusesResponse = api.getUserStatuses(authHeader, userId, limit = 20)
             if (!statusesResponse.isSuccessful || statusesResponse.body() == null) {
-                return@withContext Result.failure(Exception("Failed to fetch user statuses"))
+                val err = "Failed to fetch user statuses (HTTP ${statusesResponse.code()}): ${statusesResponse.errorBody()?.string()}"
+                Log.e(TAG, "getUserTopTagsAndPosts: $err")
+                return@withContext Result.failure(Exception(err))
             }
 
             val statuses = statusesResponse.body()!!
+            Log.d(TAG, "getUserTopTagsAndPosts: Retrieved ${statuses.size} statuses for userId=$userId")
+            statuses.forEachIndexed { index, status ->
+                Log.d(TAG, "Status[$index]: id=${status.id?.toSafeString()}, tags=${status.tags?.map { it.name }}, content=${status.content}, text=${status.text}, description=${status.description}, spoilerText=${status.spoilerText}")
+            }
+
             val topTags = extractTopTagsFromStatuses(statuses, topCount = 20)
+            Log.d(TAG, "getUserTopTagsAndPosts: Extracted ${topTags.size} top tags from ${statuses.size} statuses: $topTags")
 
             tokenManager.cachedTagsJson = Gson().toJson(topTags)
             tokenManager.tagsCacheTime = currentTime
 
-            Result.success(topTags)
+            Result.success(TagsAndPosts(topTags = topTags, statuses = statuses))
         } catch (e: Exception) {
+            Log.e(TAG, "getUserTopTagsAndPosts failed with exception", e)
             Result.failure(e)
         }
     }
 
+    suspend fun getUserTopTags(forceRefresh: Boolean = false): Result<List<String>> {
+        return getUserTopTagsAndPosts(forceRefresh).map { it.topTags }
+    }
+
     companion object {
+        private const val TAG = "PixelfedRepository"
         fun parseTokenResponseBody(rawBody: String): String? {
             return try {
                 val jsonElement = com.google.gson.JsonParser.parseString(rawBody)
@@ -312,11 +344,11 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                     }
                 }
 
-                // 2. Fallback / supplementary hashtag parsing from content HTML or text
-                val content = status.content
-                if (!content.isNullOrEmpty()) {
-                    val hashtagRegex = Regex("""#(\w+)""")
-                    hashtagRegex.findAll(content).forEach { matchResult ->
+                // 2. Fallback / supplementary hashtag parsing from content, text, description, spoilerText
+                val combinedText = listOfNotNull(status.content, status.text, status.description, status.spoilerText).joinToString(" ")
+                if (combinedText.isNotEmpty()) {
+                    val hashtagRegex = Regex("""#([\p{L}\p{N}_-]+)""")
+                    hashtagRegex.findAll(combinedText).forEach { matchResult ->
                         val tag = matchResult.groupValues[1].lowercase()
                         if (tag.isNotEmpty()) {
                             seenInStatus.add(tag)

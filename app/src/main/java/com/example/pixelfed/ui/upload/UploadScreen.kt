@@ -1,6 +1,7 @@
 package com.example.pixelfed.ui.upload
 
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -8,6 +9,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -15,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.example.pixelfed.data.api.StatusItem
+import com.example.pixelfed.data.api.toSafeString
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +51,7 @@ fun UploadScreen(
     var isError by remember { mutableStateOf(false) }
 
     var topTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var recentStatuses by remember { mutableStateOf<List<StatusItem>>(emptyList()) }
     var isLoadingTags by remember { mutableStateOf(false) }
 
     var originalMetadata by remember { mutableStateOf<ImageMetadata?>(null) }
@@ -57,13 +63,17 @@ fun UploadScreen(
     fun fetchTags(forceRefresh: Boolean = false) {
         scope.launch {
             isLoadingTags = true
-            val result = repository.getUserTopTags(forceRefresh = forceRefresh)
+            val result = repository.getUserTopTagsAndPosts(forceRefresh = forceRefresh)
             result.fold(
-                onSuccess = { tags ->
-                    topTags = tags
+                onSuccess = { data ->
+                    Log.d("UploadScreen", "fetchTags success: loaded ${data.topTags.size} tags and ${data.statuses.size} statuses")
+                    topTags = data.topTags
+                    if (data.statuses.isNotEmpty()) {
+                        recentStatuses = data.statuses
+                    }
                 },
-                onFailure = {
-                    // Ignore tag loading errors gracefully or keep existing tags
+                onFailure = { ex ->
+                    Log.e("UploadScreen", "fetchTags failure: ${ex.message}", ex)
                 }
             )
             isLoadingTags = false
@@ -173,6 +183,114 @@ fun UploadScreen(
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Scrollable Window for Recent Fetched Posts
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Fetched Posts (${recentStatuses.size})",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    if (recentStatuses.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (isLoadingTags) "Loading posts..." else "No posts retrieved (tap refresh to fetch)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(recentStatuses) { status ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surface
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(8.dp)
+                                    ) {
+                                        val statusId = status.id?.toSafeString() ?: "Unknown ID"
+                                        val contentText = status.content
+                                        val textVal = status.text
+                                        val descVal = status.description
+                                        val spoilerVal = status.spoilerText
+                                        val tagsList = status.tags?.mapNotNull { it.name }?.filter { it.isNotBlank() } ?: emptyList()
+
+                                        Text(
+                                            text = "ID: $statusId",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        if (!contentText.isNullOrBlank()) {
+                                            Text(
+                                                text = "Content: $contentText",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        if (!textVal.isNullOrBlank()) {
+                                            Text(
+                                                text = "Text: $textVal",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        if (!descVal.isNullOrBlank()) {
+                                            Text(
+                                                text = "Description: $descVal",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        if (!spoilerVal.isNullOrBlank()) {
+                                            Text(
+                                                text = "Spoiler: $spoilerVal",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        if (contentText.isNullOrBlank() && textVal.isNullOrBlank() && descVal.isNullOrBlank() && spoilerVal.isNullOrBlank()) {
+                                            Text(
+                                                text = "[No text / description]",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        if (tagsList.isNotEmpty()) {
+                                            Text(
+                                                text = "Tags: ${tagsList.joinToString { "#$it" }}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.secondary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
