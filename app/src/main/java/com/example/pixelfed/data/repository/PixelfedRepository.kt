@@ -218,95 +218,32 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
         val statuses: List<StatusItem>
     )
 
-    fun getDefaultStaticTags(): List<String> {
+    fun getStaticStatuses(): List<StatusItem> {
         val jsonString = try {
             context.assets.open("pixelfed-statuses.json").bufferedReader().use { it.readText() }
         } catch (e: Exception) {
-            Log.e(TAG, "getDefaultStaticTags: Failed to read pixelfed-statuses.json from assets", e)
+            Log.e(TAG, "getStaticStatuses: Failed to read pixelfed-statuses.json from assets", e)
             return emptyList()
         }
 
         return try {
             val listType = object : TypeToken<List<StatusItem>>() {}.type
-            val statuses: List<StatusItem> = Gson().fromJson(jsonString, listType) ?: emptyList()
-            extractTopTagsFromStatuses(statuses, topCount = Int.MAX_VALUE)
+            Gson().fromJson(jsonString, listType) ?: emptyList()
         } catch (e: Exception) {
-            Log.e(TAG, "getDefaultStaticTags: Failed to parse pixelfed-statuses.json", e)
+            Log.e(TAG, "getStaticStatuses: Failed to parse pixelfed-statuses.json", e)
             emptyList()
         }
     }
 
+    fun getDefaultStaticTags(): List<String> {
+        val statuses = getStaticStatuses()
+        return extractTopTagsFromStatuses(statuses, topCount = Int.MAX_VALUE)
+    }
+
     suspend fun getUserTopTagsAndPosts(forceRefresh: Boolean = false): Result<TagsAndPosts> = withContext(Dispatchers.IO) {
-        val cacheDurationMs = 12 * 60 * 60 * 1000L
-        val currentTime = System.currentTimeMillis()
-        val defaultStatic = getDefaultStaticTags()
-
-        if (!forceRefresh) {
-            val cachedTime = tokenManager.tagsCacheTime
-            val cachedJson = tokenManager.cachedTagsJson
-            if (cachedJson != null && (currentTime - cachedTime) < cacheDurationMs) {
-                try {
-                    val listType = object : TypeToken<List<String>>() {}.type
-                    val cachedList: List<String> = Gson().fromJson(cachedJson, listType)
-                    val effectiveCached = if (!cachedList.isNullOrEmpty()) cachedList else defaultStatic
-                    Log.d(TAG, "getUserTopTagsAndPosts: returning ${effectiveCached.size} cached tags")
-                    return@withContext Result.success(TagsAndPosts(topTags = effectiveCached, statuses = emptyList()))
-                } catch (e: Exception) {
-                    Log.w(TAG, "getUserTopTagsAndPosts: failed to parse cached tags JSON", e)
-                }
-            }
-        }
-
-        try {
-            val instanceUrl = tokenManager.instanceUrl
-            val accessToken = tokenManager.accessToken
-            if (instanceUrl.isNullOrBlank() || accessToken.isNullOrBlank()) {
-                Log.e(TAG, "getUserTopTagsAndPosts failed: not logged in")
-                return@withContext Result.failure(Exception("Not logged in"))
-            }
-
-            val api = getRetrofit(instanceUrl).create(PixelfedApi::class.java)
-            val authHeader = "Bearer $accessToken"
-
-            val accountResponse = api.verifyCredentials(authHeader)
-            if (!accountResponse.isSuccessful || accountResponse.body() == null) {
-                val err = "Failed to verify credentials (HTTP ${accountResponse.code()}): ${accountResponse.errorBody()?.string()}"
-                Log.e(TAG, "getUserTopTagsAndPosts: $err")
-                return@withContext Result.failure(Exception(err))
-            }
-
-            val userId = accountResponse.body()!!.getIdString()
-            if (userId.isNullOrBlank()) {
-                Log.e(TAG, "getUserTopTagsAndPosts: User ID not found in verify_credentials response")
-                return@withContext Result.failure(Exception("User ID not found"))
-            }
-
-            Log.d(TAG, "getUserTopTagsAndPosts: Verified user credentials, userId=$userId. Fetching statuses...")
-
-            val statusesResponse = api.getUserStatuses(authHeader, userId, limit = 20)
-            if (!statusesResponse.isSuccessful || statusesResponse.body() == null) {
-                val err = "Failed to fetch user statuses (HTTP ${statusesResponse.code()}): ${statusesResponse.errorBody()?.string()}"
-                Log.e(TAG, "getUserTopTagsAndPosts: $err")
-                return@withContext Result.failure(Exception(err))
-            }
-
-            val statuses = statusesResponse.body()!!
-            Log.d(TAG, "getUserTopTagsAndPosts: Retrieved ${statuses.size} statuses for userId=$userId")
-            statuses.forEachIndexed { index, status ->
-                Log.d(TAG, "Status[$index]: id=${status.id?.toSafeString()}, tags=${status.tags?.map { it.name }}, content=${status.content}, text=${status.text}, description=${status.description}, spoilerText=${status.spoilerText}")
-            }
-
-            val topTags = extractTopTagsFromStatuses(statuses, topCount = Int.MAX_VALUE, staticTags = defaultStatic)
-            Log.d(TAG, "getUserTopTagsAndPosts: Extracted ${topTags.size} top tags from ${statuses.size} statuses: $topTags")
-
-            tokenManager.cachedTagsJson = Gson().toJson(topTags)
-            tokenManager.tagsCacheTime = currentTime
-
-            Result.success(TagsAndPosts(topTags = topTags, statuses = statuses))
-        } catch (e: Exception) {
-            Log.e(TAG, "getUserTopTagsAndPosts failed with exception", e)
-            Result.failure(e)
-        }
+        val statuses = getStaticStatuses()
+        val topTags = extractTopTagsFromStatuses(statuses, topCount = Int.MAX_VALUE)
+        Result.success(TagsAndPosts(topTags = topTags, statuses = statuses))
     }
 
     suspend fun getUserTopTags(forceRefresh: Boolean = false): Result<List<String>> {
