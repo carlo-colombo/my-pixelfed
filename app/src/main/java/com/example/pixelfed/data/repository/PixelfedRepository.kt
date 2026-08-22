@@ -347,7 +347,7 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 // 2. Fallback / supplementary hashtag parsing from content, text, description, spoilerText
                 val combinedText = listOfNotNull(status.content, status.text, status.description, status.spoilerText).joinToString(" ")
                 if (combinedText.isNotEmpty()) {
-                    val hashtagRegex = Regex("""#(\w+)""")
+                    val hashtagRegex = Regex("""#([\p{L}\p{N}_-]+)""")
                     hashtagRegex.findAll(combinedText).forEach { matchResult ->
                         val tag = matchResult.groupValues[1].lowercase()
                         if (tag.isNotEmpty()) {

@@ -10,26 +10,25 @@ class PixelfedRepositoryTest {
     @Test
     fun testExtractTopTagsFromStatuses_rankingAndLimit() {
         val statuses = listOf(
-            StatusItem(tags = listOf(TagItem("photography"), TagItem("nature"), TagItem("sunset"))),
-            StatusItem(tags = listOf(TagItem("photography"), TagItem("nature"))),
-            StatusItem(tags = listOf(TagItem("photography"), TagItem("travel"))),
-            StatusItem(content = "Enjoying #sunset and #nature with #travel")
+            StatusItem(content = "#photography #animalphotography #canaryislands #travelphotography Lobos"),
+            StatusItem(content = "ooking chicken with #earth heat at #Lanzarote - Timanfaya park - #photography #BlueSkyArtShow #travelphotography #canaryislands"),
+            StatusItem(content = "#Glass jar #BlueSkyArtShow #photography"),
+            StatusItem(content = "Kotor Kitten #growing #blackandwhite #classicmono #BlueSkyArtShow #catsofpixelfed #catphotography #photography #cat"),
+            StatusItem(content = "#urbangaze #wien long exposure"),
+            StatusItem(content = "Shinjuku - #busy view from the top - #photography #japan #travelphotography #urbangaze #BlueSkyArtShow"),
+            StatusItem(content = "Black and White of the Iseo Lake - #classicmono #photography #blackandwhite #photography-bw #italy #northernitaly")
         )
 
         val topTags = PixelfedRepository.extractTopTagsFromStatuses(statuses, topCount = 20)
 
-        // Counts:
-        // photography: 3
-        // nature: 3
-        // travel: 2
-        // sunset: 2
-        assertEquals(4, topTags.size)
-        // photography and nature tied for top (3 each), ordered alphabetically
-        assertEquals("nature", topTags[0])
-        assertEquals("photography", topTags[1])
-        // sunset and travel tied for 3rd (2 each), ordered alphabetically
-        assertEquals("sunset", topTags[2])
-        assertEquals("travel", topTags[3])
+        // photography appears in 6 statuses -> top tag
+        assertEquals("photography", topTags[0])
+        // blueskyartshow appears in 4 statuses -> second
+        assertEquals("blueskyartshow", topTags[1])
+        // travelphotography appears in 3 statuses -> third
+        assertEquals("travelphotography", topTags[2])
+        // Check photography-bw with hyphen is extracted
+        assert(topTags.contains("photography-bw"))
     }
 
     @Test
