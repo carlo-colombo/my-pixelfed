@@ -3,6 +3,7 @@ package com.example.pixelfed.data.repository
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.example.pixelfed.R
 import com.example.pixelfed.data.api.PixelfedApi
 import com.example.pixelfed.data.api.StatusResponse
 import com.example.pixelfed.data.api.StatusItem
@@ -218,9 +219,15 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
         val statuses: List<StatusItem>
     )
 
+    fun getDefaultStaticTags(): List<String> {
+        val carloPostsText = context.getString(R.string.carlo_posts_text)
+        return extractTagsFromPostsText(carloPostsText)
+    }
+
     suspend fun getUserTopTagsAndPosts(forceRefresh: Boolean = false): Result<TagsAndPosts> = withContext(Dispatchers.IO) {
         val cacheDurationMs = 12 * 60 * 60 * 1000L
         val currentTime = System.currentTimeMillis()
+        val defaultStatic = getDefaultStaticTags()
 
         if (!forceRefresh) {
             val cachedTime = tokenManager.tagsCacheTime
@@ -229,7 +236,7 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 try {
                     val listType = object : TypeToken<List<String>>() {}.type
                     val cachedList: List<String> = Gson().fromJson(cachedJson, listType)
-                    val effectiveCached = if (!cachedList.isNullOrEmpty()) cachedList else DEFAULT_STATIC_TAGS
+                    val effectiveCached = if (!cachedList.isNullOrEmpty()) cachedList else defaultStatic
                     Log.d(TAG, "getUserTopTagsAndPosts: returning ${effectiveCached.size} cached tags")
                     return@withContext Result.success(TagsAndPosts(topTags = effectiveCached, statuses = emptyList()))
                 } catch (e: Exception) {
@@ -277,7 +284,7 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 Log.d(TAG, "Status[$index]: id=${status.id?.toSafeString()}, tags=${status.tags?.map { it.name }}, content=${status.content}, text=${status.text}, description=${status.description}, spoilerText=${status.spoilerText}")
             }
 
-            val topTags = extractTopTagsFromStatuses(statuses, topCount = Int.MAX_VALUE)
+            val topTags = extractTopTagsFromStatuses(statuses, topCount = Int.MAX_VALUE, staticTags = defaultStatic)
             Log.d(TAG, "getUserTopTagsAndPosts: Extracted ${topTags.size} top tags from ${statuses.size} statuses: $topTags")
 
             tokenManager.cachedTagsJson = Gson().toJson(topTags)
@@ -296,13 +303,14 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
 
     companion object {
         private const val TAG = "PixelfedRepository"
-        val STATIC_POSTS_TEXT = "Carlo @pictures.litapp.ovh · 1d #photography #animalphotography #canaryislands #travelphotography Lobosooking chicken with #earth heat at #Lanzarote - Timanfaya park - #photography #BlueSkyArtShow #travelphotography #canaryislandsCarlo @pictures.litapp.ovh · 27d #Glass jar #BlueSkyArtShow #photographyCarlo @pictures.litapp.ovh · 1mo Kotor Kitten #growing #blackandwhite #classicmono #BlueSkyArtShow #catsofpixelfed #catphotography #photography #catCarlo @pictures.litapp.ovh · 1mo #urbangaze #wien long exposureCarlo @pictures.litapp.ovh · 2mo Shinjuku - #busy view from the top - #photography #japan #travelphotography #urbangaze #BlueSkyArtShowCarlo @pictures.litapp.ovh · 2mo Black and White of the Iseo Lake - #classicmono #photography #blackandwhite #photography-bw #italy #northernitaly"
 
-        val DEFAULT_STATIC_TAGS = Regex("""#([\p{L}\p{N}_-]+)""")
-            .findAll(STATIC_POSTS_TEXT)
-            .map { it.groupValues[1].lowercase() }
-            .distinct()
-            .toList()
+        fun extractTagsFromPostsText(text: String): List<String> {
+            return Regex("""#([\p{L}\p{N}_-]+)""")
+                .findAll(text)
+                .map { it.groupValues[1].lowercase() }
+                .distinct()
+                .toList()
+        }
 
         fun parseTokenResponseBody(rawBody: String): String? {
             return try {
@@ -370,11 +378,6 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 if (s.isNotEmpty()) s else null
             }.distinct()
 
-            val defaultStaticSanitized = DEFAULT_STATIC_TAGS.mapNotNull { tag ->
-                val s = tag.trim().removePrefix("#").lowercase()
-                if (s.isNotEmpty()) s else null
-            }.distinct()
-
             for (status in statuses) {
                 // 1. Static tags (passed staticTags parameter + static tags array provided in status by API)
                 val staticInStatus = mutableListOf<String>()
@@ -414,13 +417,7 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
                 .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
                 .map { it.key }
 
-            val effectiveStaticTags = if (sanitizedStaticParam.isNotEmpty()) {
-                sanitizedStaticParam
-            } else {
-                defaultStaticSanitized
-            }
-
-            val combinedList = (sortedFromStatuses + effectiveStaticTags).distinct()
+            val combinedList = (sortedFromStatuses + sanitizedStaticParam).distinct()
 
             return combinedList.take(topCount)
         }
