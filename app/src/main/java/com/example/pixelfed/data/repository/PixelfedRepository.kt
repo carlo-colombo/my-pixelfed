@@ -330,33 +330,47 @@ class PixelfedRepository(private val context: Context, private val tokenManager:
             }
         }
 
-        fun extractTopTagsFromStatuses(statuses: List<StatusItem>, topCount: Int = 20): List<String> {
+        fun extractTopTagsFromStatuses(
+            statuses: List<StatusItem>,
+            topCount: Int = 20,
+            staticTags: List<String> = emptyList()
+        ): List<String> {
             val tagCounts = mutableMapOf<String, Int>()
 
             for (status in statuses) {
-                val seenInStatus = mutableSetOf<String>()
-
-                // 1. Tags array provided by API
+                // 1. Static tags (passed staticTags parameter + static tags array provided in status by API)
+                val staticInStatus = mutableListOf<String>()
+                staticTags.forEach { tag ->
+                    val sanitized = tag.trim().removePrefix("#")
+                    if (sanitized.isNotEmpty()) {
+                        staticInStatus.add(sanitized.lowercase())
+                    }
+                }
                 status.tags?.forEach { tag ->
                     val tagName = tag.name?.trim()?.removePrefix("#")
                     if (!tagName.isNullOrEmpty()) {
-                        seenInStatus.add(tagName.lowercase())
+                        staticInStatus.add(tagName.lowercase())
                     }
                 }
 
-                // 2. Fallback / supplementary hashtag parsing from content, text, description, spoilerText
+                // 2. Extracted tags from post text (content, text, description, spoilerText)
+                val extractedInStatus = mutableListOf<String>()
                 val combinedText = listOfNotNull(status.content, status.text, status.description, status.spoilerText).joinToString(" ")
                 if (combinedText.isNotEmpty()) {
                     val hashtagRegex = Regex("""#([\p{L}\p{N}_-]+)""")
                     hashtagRegex.findAll(combinedText).forEach { matchResult ->
                         val tag = matchResult.groupValues[1].lowercase()
                         if (tag.isNotEmpty()) {
-                            seenInStatus.add(tag)
+                            extractedInStatus.add(tag)
                         }
                     }
                 }
 
-                for (tag in seenInStatus) {
+                // Concatenate extracted tags to static tags, then make unique per status
+                val concatenatedTags = extractedInStatus + staticInStatus
+                val uniqueInStatus = concatenatedTags.distinct()
+
+                for (tag in uniqueInStatus) {
                     tagCounts[tag] = (tagCounts[tag] ?: 0) + 1
                 }
             }

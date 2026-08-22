@@ -56,6 +56,39 @@ class PixelfedRepositoryTest {
     }
 
     @Test
+    fun testExtractTopTagsFromStatuses_concatenatesExtractedAndStaticTags() {
+        val statuses = listOf(
+            // Status 1: extracted from content -> #landscape, #photography. static in status item -> #photography, #sunset
+            StatusItem(
+                content = "Beautiful view #landscape #photography",
+                tags = listOf(TagItem("photography"), TagItem("sunset"))
+            ),
+            // Status 2: extracted from content -> #landscape. static passed as staticTags arg -> #travel
+            StatusItem(
+                content = "Mountain trip #landscape"
+            )
+        )
+
+        val staticTagsParam = listOf("#travel", "landscape")
+
+        // Status 1 concatenated tags before distinct: [landscape, photography] + [travel, landscape, photography, sunset] -> distinct: [landscape, photography, travel, sunset]
+        // Status 2 concatenated tags before distinct: [landscape] + [travel, landscape] -> distinct: [landscape, travel]
+        // Counts across statuses:
+        // landscape: 2
+        // travel: 2
+        // photography: 1
+        // sunset: 1
+
+        val topTags = PixelfedRepository.extractTopTagsFromStatuses(statuses, topCount = 20, staticTags = staticTagsParam)
+
+        assertEquals(4, topTags.size)
+        assertEquals("landscape", topTags[0])
+        assertEquals("travel", topTags[1])
+        assertEquals("photography", topTags[2])
+        assertEquals("sunset", topTags[3])
+    }
+
+    @Test
     fun testParseTokenResponseBody_handlesValidAndInvalidJson() {
         // Valid token response
         val validTokenJson = """{"access_token":"token_12345","token_type":"Bearer","scope":"read write"}"""
